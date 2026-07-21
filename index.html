@@ -191,6 +191,21 @@
 
   .hidden{display:none!important}
 
+  /* Précheck GPS avant ouverture de l'appareil photo */
+  .gps-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .gps-modal{background:#141416;border:1px solid var(--border);border-radius:16px;padding:28px 24px;max-width:340px;width:100%;text-align:center;animation:fadeUp .3s ease}
+  .gps-modal h3{font-size:16px;font-weight:700;margin-bottom:4px;color:var(--text)}
+  .gps-modal .gps-status{font-size:13px;color:var(--text3);margin-bottom:16px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .gps-pulse{width:10px;height:10px;border-radius:50%;background:var(--accent2);flex-shrink:0;animation:gpsPulse 1.4s ease infinite}
+  @keyframes gpsPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
+  .gps-modal .gps-accuracy{font-size:38px;font-weight:700;font-family:'Space Mono',monospace;color:var(--text);margin-bottom:4px}
+  .gps-modal .gps-quality{font-size:13px;font-weight:600;margin-bottom:18px;min-height:18px}
+  .gps-modal .gps-quality.good{color:var(--accent)}
+  .gps-modal .gps-quality.medium{color:var(--warn)}
+  .gps-modal .gps-quality.bad{color:var(--danger)}
+  .gps-modal-actions{display:flex;gap:10px}
+  .gps-modal-actions .btn{flex:1;justify-content:center}
+
   /* Leaflet popup override */
   .leaflet-popup-content-wrapper{background:#1a1a1b;color:#eee;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.5)}
   .leaflet-popup-tip{background:#1a1a1b}
@@ -456,6 +471,19 @@
   <div class="step-nav" id="stepNav">
     <button class="btn btn-outline" id="prevBtn">← Retour</button>
     <button class="btn btn-blue" id="nextBtn">Suivant →</button>
+  </div>
+</div>
+
+<div class="gps-modal-overlay hidden" id="gpsModalOverlay">
+  <div class="gps-modal" role="dialog" aria-modal="true" aria-labelledby="gpsModalTitle">
+    <h3 id="gpsModalTitle">📍 Précision GPS</h3>
+    <div class="gps-status" id="gpsModalStatus"><span class="gps-pulse" id="gpsModalPulse"></span><span id="gpsModalStatusText">Recherche du signal GPS…</span></div>
+    <div class="gps-accuracy" id="gpsModalAccuracy">—</div>
+    <div class="gps-quality" id="gpsModalQuality"></div>
+    <div class="gps-modal-actions">
+      <button class="btn btn-outline" id="gpsModalCancel">Annuler</button>
+      <button class="btn btn-green" id="gpsModalContinue" disabled>📷 Ouvrir l'appareil</button>
+    </div>
   </div>
 </div>
 
@@ -918,6 +946,69 @@ function getLiveGeolocation(timeout){
   });
 }
 
+// ---- Précheck GPS : fenêtre qui suit la position en direct et affiche la
+// précision (en mètres) avant de laisser l'utilisateur ouvrir l'appareil photo. ----
+function gpsQuality(acc){
+  if(acc<=10)return{label:'Excellente précision',cls:'good'};
+  if(acc<=25)return{label:'Bonne précision',cls:'good'};
+  if(acc<=50)return{label:'Précision moyenne',cls:'medium'};
+  return{label:'Précision faible — déplacez-vous à découvert si possible',cls:'bad'};
+}
+let gpsWatchId=null;
+function closeGpsPrecheck(){
+  if(gpsWatchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
+  document.getElementById('gpsModalOverlay').classList.add('hidden');
+}
+// Affiche la fenêtre de précheck ; appelle onContinue(position|null) si l'utilisateur
+// valide, ou onCancel() s'il annule. La position se met à jour toute seule (watchPosition)
+// tant que la fenêtre reste ouverte.
+function openGpsPrecheck(onContinue,onCancel){
+  const overlay=document.getElementById('gpsModalOverlay');
+  const statusText=document.getElementById('gpsModalStatusText');
+  const pulse=document.getElementById('gpsModalPulse');
+  const accuracyEl=document.getElementById('gpsModalAccuracy');
+  const qualityEl=document.getElementById('gpsModalQuality');
+  const continueBtn=document.getElementById('gpsModalContinue');
+  const cancelBtn=document.getElementById('gpsModalCancel');
+
+  let lastPosition=null;
+  overlay.classList.remove('hidden');
+  pulse.style.display='';
+  statusText.textContent='Recherche du signal GPS…';
+  accuracyEl.textContent='—';
+  qualityEl.textContent='';qualityEl.className='gps-quality';
+  continueBtn.disabled=true;
+
+  const cleanup=()=>{closeGpsPrecheck();continueBtn.onclick=null;cancelBtn.onclick=null;};
+
+  if(!navigator.geolocation){
+    statusText.textContent='⚠ Géolocalisation non disponible sur cet appareil.';
+    pulse.style.display='none';
+    continueBtn.disabled=false;
+  }else{
+    gpsWatchId=navigator.geolocation.watchPosition(
+      pos=>{
+        lastPosition={lat:pos.coords.latitude,lon:pos.coords.longitude,alt:typeof pos.coords.altitude==='number'?pos.coords.altitude:null,accuracy:pos.coords.accuracy};
+        statusText.textContent='Position détectée — mise à jour en continu';
+        accuracyEl.textContent='± '+Math.round(pos.coords.accuracy)+' m';
+        const q=gpsQuality(pos.coords.accuracy);
+        qualityEl.textContent=q.label;
+        qualityEl.className='gps-quality '+q.cls;
+        continueBtn.disabled=false;
+      },
+      err=>{
+        statusText.textContent='⚠ Position indisponible ('+(err.code===1?'permission refusée':'signal introuvable')+').';
+        pulse.style.display='none';
+        continueBtn.disabled=false;
+      },
+      {enableHighAccuracy:true,maximumAge:0,timeout:20000}
+    );
+  }
+
+  continueBtn.onclick=()=>{cleanup();onContinue(lastPosition);};
+  cancelBtn.onclick=()=>{cleanup();if(onCancel)onCancel();};
+}
+
 async function mapWithConcurrency(items,limit,fn){
   const results=new Array(items.length);
   let idx=0;
@@ -1063,9 +1154,16 @@ $('#gisDropzone').addEventListener('drop',e=>{e.preventDefault();$('#gisDropzone
 $('#folderInput').addEventListener('change',e=>{if(e.target.files.length)loadFolder([...e.target.files]);});
 $('#gisCancelBtn').addEventListener('click',()=>{gisCancelled=true;});
 $('#newProjectBtn').addEventListener('click',resetGisProject);
-$('#cameraBtn').addEventListener('click',()=>$('#cameraInput').click());
+let pendingCameraGeo=null;
+$('#cameraBtn').addEventListener('click',()=>{
+  openGpsPrecheck(
+    (livePos)=>{pendingCameraGeo=livePos;$('#cameraInput').click();},
+    ()=>{pendingCameraGeo=null;}
+  );
+});
 $('#cameraInput').addEventListener('change',async e=>{
   if(e.target.files.length)await addCameraPhoto(e.target.files[0]);
+  pendingCameraGeo=null;
   e.target.value='';
 });
 
@@ -1077,9 +1175,13 @@ async function addCameraPhoto(file){
   try{
     const meta=await readMeta(file);
     if(meta.lat===null){
-      $('#gisLoadStatus').textContent='Récupération de la position GPS…';
-      const geo=await getLiveGeolocation();
-      if(geo){meta.lat=geo.lat;meta.lon=geo.lon;meta.alt=geo.alt;}
+      if(pendingCameraGeo){
+        meta.lat=pendingCameraGeo.lat;meta.lon=pendingCameraGeo.lon;meta.alt=pendingCameraGeo.alt;
+      }else{
+        $('#gisLoadStatus').textContent='Récupération de la position GPS…';
+        const geo=await getLiveGeolocation();
+        if(geo){meta.lat=geo.lat;meta.lon=geo.lon;meta.alt=geo.alt;}
+      }
     }
     const renderable=await toRenderable(file);
     if(!renderable){alert('⚠ Cette photo n\'a pas pu être traitée.');return;}
