@@ -14,7 +14,7 @@
     --accent2:#5ac8fa;--accent2-bg:rgba(90,200,250,0.12);--accent2-border:rgba(90,200,250,0.15);
     --warn:#ff9500;--warn-bg:rgba(255,149,0,0.12);--warn-border:rgba(255,149,0,0.2);
     --danger:#ff3b30;--danger-bg:rgba(255,59,48,0.12);--danger-border:rgba(255,59,48,0.2);
-    --text:#f0f0f0;--text2:#ccc;--text3:#888;--text4:#555;
+    --text:#f0f0f0;--text2:#ccc;--text3:#888;--text4:#6e6e6e;
   }
   body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;padding:0 24px 60px;-webkit-font-smoothing:antialiased}
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -39,6 +39,11 @@
   .btn-blue{background:var(--accent2);color:#000;font-weight:700}
   .btn-blue:hover:not(:disabled){filter:brightness(1.1)}
   .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
+  .btn:focus-visible,.tab:focus-visible,.preset-btn:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+  .sel-card:focus-visible,.map-photo-item:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+
+  /* Barre d'actions projet (reset) */
+  .project-bar{max-width:660px;margin:0 auto 12px;text-align:center}
 
   /* Global lib-load warning banner */
   .lib-warning{max-width:620px;margin:16px auto 0;padding:12px 16px;border-radius:10px;background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);font-size:13px;text-align:center;animation:fadeUp .3s ease}
@@ -77,6 +82,8 @@
   }
   .select-toolbar input[type="text"]{flex:1;min-width:160px;max-width:260px}
   .select-toolbar input[type="text"]:focus,.select-toolbar select:focus{border-color:var(--accent2)}
+  .gps-filter{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);cursor:pointer;white-space:nowrap}
+  .gps-filter input{accent-color:var(--accent2);cursor:pointer}
 
   /* Select grid */
   .select-grid{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
@@ -178,6 +185,9 @@
 
   .summary-box{max-width:620px;margin:0 auto 16px;padding:16px 20px;border-radius:14px;font-size:13px;animation:fadeUp .3s ease}
   .summary-box strong{font-family:'Space Mono',monospace}
+  .export-bar-wrap{max-width:620px;margin:16px auto 0}
+  .load-status-row{display:flex;align-items:center;justify-content:center;gap:10px;max-width:560px;margin:0 auto 20px}
+  .load-status-row .load-status{margin:0}
 
   .hidden{display:none!important}
 
@@ -199,13 +209,13 @@
 
 <div id="libWarning" class="lib-warning hidden">⚠ Certaines librairies n'ont pas pu être chargées (vérifiez votre connexion internet), l'outil risque de ne pas fonctionner correctement.</div>
 
-<div class="tabs">
-  <button class="tab active" data-tab="compress">📸 Compression rapide</button>
-  <button class="tab" data-tab="gis">🌍 Export QGIS</button>
+<div class="tabs" role="tablist">
+  <button class="tab active" data-tab="compress" role="tab" aria-selected="true" aria-controls="tab-compress">📸 Compression rapide</button>
+  <button class="tab" data-tab="gis" role="tab" aria-selected="false" aria-controls="tab-gis">🌍 Export QGIS</button>
 </div>
 
 <!-- ========== TAB 1: QUICK COMPRESS ========== -->
-<div class="tab-content active" id="tab-compress">
+<div class="tab-content active" id="tab-compress" role="tabpanel">
   <div class="header">
     <div class="tag" style="color:var(--accent)">Compression</div>
     <h1>Compression rapide</h1>
@@ -227,7 +237,10 @@
     <div class="hint">ou cliquez pour parcourir</div>
   </div>
   <input type="file" id="qFileInput" accept="image/*,.heic,.heif" multiple hidden>
-  <div class="load-status" id="qLoadStatus"></div>
+  <div class="load-status-row">
+    <div class="load-status" id="qLoadStatus" aria-live="polite"></div>
+    <button class="btn btn-sm btn-outline hidden" id="qCancelBtn">Annuler</button>
+  </div>
   <div class="qc-stats" id="qStats">
     <div><div class="sub" id="qStatsCount"></div><div class="big" id="qStatsSaved"></div></div>
     <div class="qc-stats-actions">
@@ -239,7 +252,7 @@
 </div>
 
 <!-- ========== TAB 2: QGIS EXPORT WIZARD ========== -->
-<div class="tab-content" id="tab-gis">
+<div class="tab-content" id="tab-gis" role="tabpanel">
   <div class="header">
     <div class="tag" style="color:var(--accent2)">Export QGIS</div>
     <h1>Shapefile + Photos</h1>
@@ -267,11 +280,17 @@
       <div class="hint">Toutes les images seront listées (JPEG, PNG, HEIC/HEIF…) — vous choisirez lesquelles garder</div>
     </div>
     <input type="file" id="folderInput" webkitdirectory multiple hidden>
-    <div class="load-status" id="gisLoadStatus"></div>
+    <div class="load-status-row">
+      <div class="load-status" id="gisLoadStatus" aria-live="polite"></div>
+      <button class="btn btn-sm btn-outline hidden" id="gisCancelBtn">Annuler</button>
+    </div>
+    <div class="project-bar hidden" id="projectBar">
+      <button class="btn btn-sm btn-outline" id="newProjectBtn">🔄 Nouveau projet</button>
+    </div>
     <div class="hidden" id="selectControls" style="text-align:center;margin-bottom:12px">
       <button class="btn btn-sm btn-outline" id="selAll">Tout sélectionner</button>
       <button class="btn btn-sm btn-outline" id="selNone" style="margin-left:4px">Tout désélectionner</button>
-      <span style="margin-left:12px;font-size:13px;color:var(--text3)" id="selCount"></span>
+      <span style="margin-left:12px;font-size:13px;color:var(--text3)" id="selCount" aria-live="polite"></span>
     </div>
     <div class="hidden select-toolbar" id="selectToolbar">
       <input type="text" id="selSearch" placeholder="🔍 Rechercher par nom…">
@@ -283,6 +302,7 @@
         <option value="gps-first">📍 GPS d'abord</option>
         <option value="nogps-first">⚠ Sans GPS d'abord</option>
       </select>
+      <label class="gps-filter"><input type="checkbox" id="filterNoGps"> ⚠ Sans GPS uniquement</label>
     </div>
     <div class="select-grid" id="selectGrid"></div>
   </div>
@@ -319,7 +339,7 @@
       <button class="preset-btn" data-q="0.35">✦✦✦ Forte</button>
     </div>
     <div class="compress-status" id="compStatus">
-      <div style="font-size:14px;color:var(--text2)" id="compLabel">Prêt à compresser</div>
+      <div style="font-size:14px;color:var(--text2)" id="compLabel" aria-live="polite">Prêt à compresser</div>
       <div class="compress-bar"><div class="compress-bar-fill" id="compBar"></div></div>
       <button class="btn btn-green" id="compStart">Lancer la compression</button>
     </div>
@@ -359,7 +379,10 @@
     <div style="text-align:center;margin-top:20px">
       <button class="btn btn-blue" id="btnExport" style="font-size:15px;padding:14px 28px">🌍 Générer et télécharger le ZIP</button>
     </div>
-    <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--text4)" id="exportStatus"></div>
+    <div class="export-bar-wrap hidden" id="exportBarWrap">
+      <div class="compress-bar"><div class="compress-bar-fill" id="exportBar"></div></div>
+    </div>
+    <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--text4)" id="exportStatus" aria-live="polite"></div>
   </div>
 
   <!-- Step navigation -->
@@ -786,14 +809,53 @@ function fmtSize(b){if(b<1024)return b+' o';if(b<1048576)return(b/1024).toFixed(
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 
 // --- Tabs ---
-$$('.tab').forEach(t=>t.addEventListener('click',()=>{$$('.tab').forEach(x=>x.classList.remove('active'));$$('.tab-content').forEach(x=>x.classList.remove('active'));t.classList.add('active');$('#tab-'+t.dataset.tab).classList.add('active');if(t.dataset.tab==='gis'&&leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);}));
+$$('.tab').forEach(t=>t.addEventListener('click',()=>{$$('.tab').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});$$('.tab-content').forEach(x=>x.classList.remove('active'));t.classList.add('active');t.setAttribute('aria-selected','true');$('#tab-'+t.dataset.tab).classList.add('active');if(t.dataset.tab==='gis'&&leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);}));
+
+// --- Utilitaires communs ---
+function escapeAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+async function mapWithConcurrency(items,limit,fn){
+  const results=new Array(items.length);
+  let idx=0;
+  async function worker(){
+    while(idx<items.length){
+      const i=idx++;
+      results[i]=await fn(items[i],i);
+    }
+  }
+  const workers=Array.from({length:Math.min(limit,items.length)},worker);
+  await Promise.all(workers);
+  return results;
+}
 
 // ============================
 // TAB 1: QUICK COMPRESS
 // ============================
-let qQ=0.6,qFiles=[],qId=0;
-$('#qPresets').querySelectorAll('.preset-btn').forEach(b=>{b.addEventListener('click',()=>{$('#qPresets').querySelectorAll('.preset-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');if(b.dataset.q==='custom'){$('#qSliderWrap').classList.remove('hidden');qQ=parseInt($('#qSlider').value)/100;}else{$('#qSliderWrap').classList.add('hidden');qQ=parseFloat(b.dataset.q);}});});
-$('#qSlider').addEventListener('input',e=>{$('#qSliderVal').textContent=e.target.value;qQ=parseInt(e.target.value)/100;});
+let qQ=0.6,qFiles=[],qId=0,qCancelled=false,qRunning=false;
+
+// -- Mémorisation du dernier réglage de qualité (localStorage) --
+function saveQualityPref(key,presetBtn,sliderVal){
+  try{localStorage.setItem(key,JSON.stringify({preset:presetBtn,slider:sliderVal}));}catch(e){}
+}
+function loadQualityPref(key){
+  try{const v=JSON.parse(localStorage.getItem(key));return v&&typeof v==='object'?v:null;}catch(e){return null;}
+}
+function applyQualityPref(containerSel,pref,onApply){
+  if(!pref)return;
+  const presets=$(containerSel).querySelectorAll('.preset-btn');
+  let btn=[...presets].find(b=>b.dataset.q===pref.preset);
+  if(!btn)return;
+  presets.forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  onApply(btn,pref.slider);
+}
+
+$('#qPresets').querySelectorAll('.preset-btn').forEach(b=>{b.addEventListener('click',()=>{$('#qPresets').querySelectorAll('.preset-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');if(b.dataset.q==='custom'){$('#qSliderWrap').classList.remove('hidden');qQ=parseInt($('#qSlider').value)/100;}else{$('#qSliderWrap').classList.add('hidden');qQ=parseFloat(b.dataset.q);}saveQualityPref('photoQgisTool.qQuality',b.dataset.q,$('#qSlider').value);});});
+$('#qSlider').addEventListener('input',e=>{$('#qSliderVal').textContent=e.target.value;qQ=parseInt(e.target.value)/100;saveQualityPref('photoQgisTool.qQuality','custom',e.target.value);});
+applyQualityPref('#qPresets',loadQualityPref('photoQgisTool.qQuality'),(btn,slider)=>{
+  if(btn.dataset.q==='custom'){$('#qSliderWrap').classList.remove('hidden');$('#qSlider').value=slider;$('#qSliderVal').textContent=slider;qQ=parseInt(slider)/100;}
+  else{$('#qSliderWrap').classList.add('hidden');qQ=parseFloat(btn.dataset.q);}
+});
+
 $('#qDropzone').addEventListener('click',()=>$('#qFileInput').click());
 $('#qDropzone').addEventListener('dragover',e=>{e.preventDefault();$('#qDropzone').classList.add('over');});
 $('#qDropzone').addEventListener('dragleave',()=>$('#qDropzone').classList.remove('over'));
@@ -801,23 +863,31 @@ $('#qDropzone').addEventListener('drop',e=>{e.preventDefault();$('#qDropzone').c
 $('#qFileInput').addEventListener('change',e=>{if(e.target.files.length)qProcess([...e.target.files]);e.target.value='';});
 $('#qBtnClear').addEventListener('click',()=>{qFiles.forEach(f=>URL.revokeObjectURL(f.preview));qFiles=[];qRender();});
 $('#qBtnDl').addEventListener('click',qDownload);
+$('#qCancelBtn').addEventListener('click',()=>{qCancelled=true;});
 
 async function qProcess(fl){
   const imgs=fl.filter(isImageFile);
+  if(!imgs.length)return;
+  qCancelled=false;qRunning=true;
   $('#qDropIcon').textContent='⏳';
+  $('#qCancelBtn').classList.remove('hidden');
   const failed=[];
-  for(let i=0;i<imgs.length;i++){
-    const f=imgs[i];
-    $('#qLoadStatus').textContent='Traitement '+(i+1)+'/'+imgs.length+'…';
+  let done=0;
+  const results=await mapWithConcurrency(imgs,4,async(f)=>{
+    if(qCancelled)return null;
     try{
       const renderable=await toRenderable(f);
-      if(!renderable){failed.push(f.name);continue;}
+      if(!renderable){failed.push(f.name);return null;}
       const r=await compressImg(renderable,qQ);
-      qFiles.push({id:++qId,name:f.name,os:f.size,cs:r.blob.size,preview:r.preview,blob:r.blob});
-    }catch(e){failed.push(f.name);}
-  }
+      return {name:f.name,os:f.size,cs:r.blob.size,preview:r.preview,blob:r.blob};
+    }catch(e){failed.push(f.name);return null;}
+    finally{done++;$('#qLoadStatus').textContent=(qCancelled?'Annulation… ':'Traitement… ')+done+'/'+imgs.length;}
+  });
+  results.forEach(r=>{if(r)qFiles.push({id:++qId,...r});});
+  qRunning=false;
   $('#qDropIcon').textContent='📸';
   $('#qLoadStatus').textContent='';
+  $('#qCancelBtn').classList.add('hidden');
   if(failed.length)alert('⚠ '+failed.length+' photo(s) n\'ont pas pu être traitées :\n'+failed.join(', '));
   qRender();
 }
@@ -844,7 +914,7 @@ function qRender(){
   qFiles.forEach(f=>{
     const sv2=f.os-f.cs,pc=f.os>0?((sv2/f.os)*100).toFixed(0):0;
     const cd=document.createElement('div');cd.className='qc-card';
-    cd.innerHTML='<div class="qc-card-img"><img src="'+f.preview+'"><button class="qc-remove" data-id="'+f.id+'">×</button><div class="qc-badge '+(sv2>0?'':'same')+'">'+(sv2>0?'−'+pc+'%':'≈')+'</div></div><div class="qc-body"><div class="qc-name">'+f.name+'</div><div class="qc-sizes"><span>'+fmtSize(f.os)+'</span><span class="arrow">→</span><span class="after">'+fmtSize(f.cs)+'</span></div></div>';
+    cd.innerHTML='<div class="qc-card-img"><img src="'+f.preview+'" alt="Aperçu compressé de '+escapeAttr(f.name)+'"><button class="qc-remove" data-id="'+f.id+'" aria-label="Retirer '+escapeAttr(f.name)+'">×</button><div class="qc-badge '+(sv2>0?'':'same')+'">'+(sv2>0?'−'+pc+'%':'≈')+'</div></div><div class="qc-body"><div class="qc-name">'+escapeAttr(f.name)+'</div><div class="qc-sizes"><span>'+fmtSize(f.os)+'</span><span class="arrow">→</span><span class="after">'+fmtSize(f.cs)+'</span></div></div>';
     cd.querySelector('.qc-remove').addEventListener('click',()=>{URL.revokeObjectURL(f.preview);qFiles=qFiles.filter(x=>x.id!==f.id);qRender();});
     frag.appendChild(cd);
   });
@@ -855,7 +925,8 @@ function qRender(){
 // TAB 2: QGIS WIZARD
 // ============================
 let gisAll=[], gisSelected=[], gisQ=0.6, currentStep=0, leafletMap=null, markers={}, placingId=null;
-let selSearch='', selSort='name-asc';
+let selSearch='', selSort='name-asc', filterNoGps=false;
+let gisCancelled=false, gisLoading=false;
 
 // -- Folder import --
 $('#gisDropzone').addEventListener('click',()=>$('#folderInput').click());
@@ -863,32 +934,57 @@ $('#gisDropzone').addEventListener('dragover',e=>{e.preventDefault();$('#gisDrop
 $('#gisDropzone').addEventListener('dragleave',()=>$('#gisDropzone').classList.remove('over'));
 $('#gisDropzone').addEventListener('drop',e=>{e.preventDefault();$('#gisDropzone').classList.remove('over');if(e.dataTransfer.files.length)loadFolder([...e.dataTransfer.files]);});
 $('#folderInput').addEventListener('change',e=>{if(e.target.files.length)loadFolder([...e.target.files]);});
+$('#gisCancelBtn').addEventListener('click',()=>{gisCancelled=true;});
+$('#newProjectBtn').addEventListener('click',resetGisProject);
+
+function resetGisProject(){
+  if(gisLoading)return;
+  gisAll.forEach(p=>{if(p.preview)URL.revokeObjectURL(p.preview);});
+  gisAll=[];gisSelected=[];
+  if(leafletMap){Object.values(markers).forEach(m=>leafletMap.removeLayer(m));markers={};}
+  placingId=null;
+  selSearch='';$('#selSearch').value='';
+  selSort='name-asc';$('#selSort').value='name-asc';
+  filterNoGps=false;$('#filterNoGps').checked=false;
+  $('#folderInput').value='';
+  $('#projectBar').classList.add('hidden');
+  goToStep(0);
+  buildSelectGrid();
+}
 
 async function loadFolder(fl){
   // Libère les aperçus (object URLs) du précédent import pour éviter les fuites mémoire
   gisAll.forEach(p=>{if(p.preview)URL.revokeObjectURL(p.preview);});
   gisAll=[];
   const imgs=fl.filter(isImageFile);
+  if(!imgs.length)return;
+  gisCancelled=false;gisLoading=true;
   $('#gisIcon').textContent='⏳';
-  let idx=0;const failed=[];
-  for(let i=0;i<imgs.length;i++){
-    const f=imgs[i];
-    $('#gisLoadStatus').textContent='Analyse EXIF + aperçus… '+(i+1)+'/'+imgs.length;
+  $('#gisCancelBtn').classList.remove('hidden');
+  let done=0;const failed=[];
+  const results=await mapWithConcurrency(imgs,4,async(f)=>{
+    if(gisCancelled)return null;
     const meta=await readMeta(f);
     const renderable=await toRenderable(f);
-    if(!renderable){failed.push(f.name);continue;}
+    if(!renderable){failed.push(f.name);done++;return null;}
     let preview;
     try{ preview=(await compressImg(renderable,0.7,480)).preview; }
-    catch(e){failed.push(f.name);continue;}
-    gisAll.push({
-      id:++idx,name:f.name,displayName:f.name.replace(/\.[^.]+$/,''),ext:'.jpg',
+    catch(e){failed.push(f.name);done++;return null;}
+    done++;
+    $('#gisLoadStatus').textContent=(gisCancelled?'Annulation… ':'Analyse EXIF + aperçus… ')+done+'/'+imgs.length;
+    return {
+      name:f.name,displayName:f.name.replace(/\.[^.]+$/,''),ext:'.jpg',
       file:f,sourceBlob:renderable,
       preview,selected:true,lat:meta.lat,lon:meta.lon,alt:meta.alt,hasGps:meta.lat!==null,
       takenAt:meta.takenAt,blob:null,compSize:0
-    });
-  }
+    };
+  });
+  let idx=0;
+  results.forEach(r=>{if(r)gisAll.push({id:++idx,...r});});
+  gisLoading=false;
   $('#gisIcon').textContent='📂';
   $('#gisLoadStatus').textContent='';
+  $('#gisCancelBtn').classList.add('hidden');
   if(failed.length)alert('⚠ '+failed.length+' photo(s) n\'ont pas pu être décodées (format non supporté) :\n'+failed.join(', '));
   selSearch='';$('#selSearch').value='';selSort='name-asc';$('#selSort').value='name-asc';
   buildSelectGrid();
@@ -905,10 +1001,12 @@ $('#selSearch').addEventListener('input',e=>{
   searchDebounce=setTimeout(()=>{selSearch=v;buildSelectGrid();},150);
 });
 $('#selSort').addEventListener('change',e=>{selSort=e.target.value;buildSelectGrid();});
+$('#filterNoGps').addEventListener('change',e=>{filterNoGps=e.target.checked;buildSelectGrid();});
 
 function getFilteredSortedAll(){
   let list=gisAll.slice();
   if(selSearch.trim()){const q=selSearch.trim().toLowerCase();list=list.filter(p=>p.name.toLowerCase().includes(q));}
+  if(filterNoGps)list=list.filter(p=>!p.hasGps);
   const coll=(typeof Intl!=='undefined'&&Intl.Collator)?new Intl.Collator('fr',{numeric:true,sensitivity:'base'}):null;
   const cmp=(a,b)=>coll?coll.compare(a,b):a.localeCompare(b);
   switch(selSort){
@@ -923,35 +1021,54 @@ function getFilteredSortedAll(){
 }
 
 const selCards={};
+let selectGridRenderGen=0;
 
+// Rendu par lots (requestAnimationFrame) pour ne pas bloquer l'UI sur de gros dossiers
+// (des centaines/milliers de cartes créées d'un coup provoqueraient un gel visible).
 function buildSelectGrid(){
   const g=$('#selectGrid'),c=$('#selectControls'),tb=$('#selectToolbar');
+  const myGen=++selectGridRenderGen;
   g.innerHTML='';
   Object.keys(selCards).forEach(k=>delete selCards[k]);
   if(!gisAll.length){c.classList.add('hidden');tb.classList.add('hidden');return;}
   c.classList.remove('hidden');tb.classList.remove('hidden');
   const view=getFilteredSortedAll();
+  updateSelCount();updateNav();
   if(!view.length){
     const d=document.createElement('div');d.className='select-empty';d.textContent='Aucune photo ne correspond à la recherche.';
     g.appendChild(d);
-  }else{
+    return;
+  }
+  const CHUNK=60;
+  let idx=0;
+  function renderChunk(){
+    if(myGen!==selectGridRenderGen)return; // une recherche/tri plus récent a pris le relais
     const frag=document.createDocumentFragment();
-    view.forEach(p=>{
-      const d=document.createElement('div');d.className='sel-card'+(p.selected?' selected':'');
-      d.innerHTML='<img src="'+p.preview+'" loading="lazy"><div class="sel-check">✓</div><div class="sel-name">'+p.name+'</div><div class="sel-gps">'+(p.hasGps?'📍':'')+'</div>';
-      d.addEventListener('click',()=>{
+    const end=Math.min(idx+CHUNK,view.length);
+    for(;idx<end;idx++){
+      const p=view[idx];
+      const d=document.createElement('div');
+      d.className='sel-card'+(p.selected?' selected':'');
+      d.setAttribute('role','button');
+      d.setAttribute('tabindex','0');
+      d.setAttribute('aria-pressed',p.selected?'true':'false');
+      d.innerHTML='<img src="'+p.preview+'" loading="lazy" alt="'+escapeAttr(p.name)+'"><div class="sel-check">✓</div><div class="sel-name">'+escapeAttr(p.name)+'</div><div class="sel-gps">'+(p.hasGps?'📍':'')+'</div>';
+      const toggle=()=>{
         p.selected=!p.selected;
         d.classList.toggle('selected',p.selected);
+        d.setAttribute('aria-pressed',p.selected?'true':'false');
         updateSelCount();
         updateNav();
-      });
+      };
+      d.addEventListener('click',toggle);
+      d.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle();}});
       selCards[p.id]=d;
       frag.appendChild(d);
-    });
+    }
     g.appendChild(frag);
+    if(idx<view.length)requestAnimationFrame(renderChunk);
   }
-  updateSelCount();
-  updateNav();
+  renderChunk();
 }
 
 function syncSelectUI(){
@@ -974,7 +1091,7 @@ function renderRename(){
   const list=$('#renameList');list.innerHTML='';
   gisSelected.forEach((p,i)=>{
     const d=document.createElement('div');d.className='rename-row';d.style.animationDelay=(i*30)+'ms';
-    d.innerHTML='<img src="'+p.preview+'"><input type="text" value="'+p.displayName.replace(/"/g,'&quot;')+'" data-id="'+p.id+'"><span class="rename-ext">'+p.ext+'</span>';
+    d.innerHTML='<img src="'+p.preview+'" alt="'+escapeAttr(p.name)+'"><input type="text" value="'+escapeAttr(p.displayName)+'" data-id="'+p.id+'" aria-label="Nom pour '+escapeAttr(p.name)+'"><span class="rename-ext">'+p.ext+'</span>';
     d.querySelector('input').addEventListener('input',e=>{p.displayName=e.target.value;checkDuplicateNames();});
     list.appendChild(d);
   });
@@ -1013,7 +1130,8 @@ $('#bulkReset').addEventListener('click',()=>{
 });
 
 // -- Step 2: Compress --
-$('#gPresets').querySelectorAll('.preset-btn').forEach(b=>{b.addEventListener('click',()=>{$('#gPresets').querySelectorAll('.preset-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');gisQ=parseFloat(b.dataset.q);});});
+$('#gPresets').querySelectorAll('.preset-btn').forEach(b=>{b.addEventListener('click',()=>{$('#gPresets').querySelectorAll('.preset-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');gisQ=parseFloat(b.dataset.q);saveQualityPref('photoQgisTool.gisQuality',b.dataset.q,null);});});
+applyQualityPref('#gPresets',loadQualityPref('photoQgisTool.gisQuality'),(btn)=>{gisQ=parseFloat(btn.dataset.q);});
 $('#compStart').addEventListener('click',runCompress);
 
 async function runCompress(){
@@ -1027,7 +1145,7 @@ async function runCompress(){
     catch(e){p.blob=p.file;p.compSize=p.file.size;}
     const row=document.createElement('div');row.className='comp-row';
     const sv=p.file.size-p.compSize,pc=p.file.size>0?((sv/p.file.size)*100).toFixed(0):0;
-    row.innerHTML='<img src="'+p.preview+'"><span class="name">'+p.displayName+p.ext+'</span><span class="sizes">'+fmtSize(p.file.size)+' → '+fmtSize(p.compSize)+'</span><span class="pct">'+(sv>=0?'−'+pc:'+'+Math.abs(pc))+'%</span>';
+    row.innerHTML='<img src="'+p.preview+'" alt="'+escapeAttr(p.displayName)+'"><span class="name">'+escapeAttr(p.displayName+p.ext)+'</span><span class="sizes">'+fmtSize(p.file.size)+' → '+fmtSize(p.compSize)+'</span><span class="pct">'+(sv>=0?'−'+pc:'+'+Math.abs(pc))+'%</span>';
     res.appendChild(row);
   }
   lbl.textContent='✓ Compression terminée';btn.textContent='✓ Terminé';updateNav();
@@ -1053,10 +1171,23 @@ function showPreview(p){
   const panel=$('#photoPreview'),img=$('#previewImg'),name=$('#previewName'),hint=$('#previewHint');
   panel.classList.remove('hidden');
   img.src=p.preview;
+  img.alt=p.displayName;
   name.textContent=p.displayName;
   hint.textContent='📌 Cliquez sur la carte pour positionner cette photo';
 }
 function hidePreview(){$('#photoPreview').classList.add('hidden');}
+
+// Crée une entrée de liste (photo géolocalisée ou à placer) accessible au clavier.
+function makeMapListItem(p,innerHtml,extraClass,onActivate){
+  const d=document.createElement('div');
+  d.className='map-photo-item'+(extraClass?' '+extraClass:'');
+  d.setAttribute('role','button');
+  d.setAttribute('tabindex','0');
+  d.innerHTML=innerHtml;
+  d.addEventListener('click',onActivate);
+  d.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onActivate();}});
+  return d;
+}
 
 function renderMap(){
   initMap();
@@ -1067,12 +1198,14 @@ function renderMap(){
 
   const listGps=$('#mapListGps');listGps.innerHTML='';
   gpsPhotos.forEach(p=>{
-    const d=document.createElement('div');d.className='map-photo-item';
-    d.innerHTML='<img src="'+p.preview+'"><span class="mname">'+p.displayName+'</span><span class="mcoord">'+p.lat.toFixed(4)+', '+p.lon.toFixed(4)+'</span>';
-    d.addEventListener('click',()=>{leafletMap.setView([p.lat,p.lon],16);markers[p.id]&&markers[p.id].openPopup();});
+    const d=makeMapListItem(p,
+      '<img src="'+p.preview+'" alt="'+escapeAttr(p.displayName)+'"><span class="mname">'+escapeAttr(p.displayName)+'</span><span class="mcoord">'+p.lat.toFixed(4)+', '+p.lon.toFixed(4)+'</span>',
+      '',
+      ()=>{leafletMap.setView([p.lat,p.lon],16);markers[p.id]&&markers[p.id].openPopup();}
+    );
     listGps.appendChild(d);
     const mk=L.marker([p.lat,p.lon],{draggable:true}).addTo(leafletMap);
-    mk.bindPopup('<img src="'+p.preview+'" style="width:180px;border-radius:6px"><br><b>'+p.displayName+'</b>');
+    mk.bindPopup('<img src="'+p.preview+'" style="width:180px;border-radius:6px" alt="'+escapeAttr(p.displayName)+'"><br><b>'+escapeAttr(p.displayName)+'</b>');
     mk.on('dragend',()=>{const ll=mk.getLatLng();p.lat=ll.lat;p.lon=ll.lng;renderMapLists();});
     markers[p.id]=mk;
   });
@@ -1101,14 +1234,16 @@ function renderMapLists(){
     $('#mapInstr').className='map-instructions';
     $('#mapInstr').innerHTML='Cliquez sur une photo <strong>sans GPS</strong> ci-dessous, puis cliquez sur la carte pour la placer.';
     noGps.forEach(p=>{
-      const d=document.createElement('div');d.className='map-photo-item'+(placingId===p.id?' active':'');
-      d.innerHTML='<img src="'+p.preview+'"><span class="mname">'+p.displayName+'</span><span style="color:var(--warn);font-size:11px">à placer</span>';
-      d.addEventListener('click',()=>{
-        placingId=p.id;
-        showPreview(p);
-        renderMapLists();
-        $('#mapInstr').innerHTML='📌 Cliquez sur la carte pour placer <strong>'+p.displayName+'</strong>';
-      });
+      const d=makeMapListItem(p,
+        '<img src="'+p.preview+'" alt="'+escapeAttr(p.displayName)+'"><span class="mname">'+escapeAttr(p.displayName)+'</span><span style="color:var(--warn);font-size:11px">à placer</span>',
+        placingId===p.id?'active':'',
+        ()=>{
+          placingId=p.id;
+          showPreview(p);
+          renderMapLists();
+          $('#mapInstr').innerHTML='📌 Cliquez sur la carte pour placer <strong>'+escapeAttr(p.displayName)+'</strong>';
+        }
+      );
       listNo.appendChild(d);
     });
   }
@@ -1122,14 +1257,16 @@ function onMapClick(e){
   p.lat=e.latlng.lat;p.lon=e.latlng.lng;p.hasGps=true;
   if(markers[p.id])leafletMap.removeLayer(markers[p.id]);
   const mk=L.marker([p.lat,p.lon],{draggable:true}).addTo(leafletMap);
-  mk.bindPopup('<img src="'+p.preview+'" style="width:180px;border-radius:6px"><br><b>'+p.displayName+'</b>');
+  mk.bindPopup('<img src="'+p.preview+'" style="width:180px;border-radius:6px" alt="'+escapeAttr(p.displayName)+'"><br><b>'+escapeAttr(p.displayName)+'</b>');
   mk.on('dragend',()=>{const ll=mk.getLatLng();p.lat=ll.lat;p.lon=ll.lng;renderMapLists();});
   markers[p.id]=mk;
 
   const listGps=$('#mapListGps');
-  const d=document.createElement('div');d.className='map-photo-item';
-  d.innerHTML='<img src="'+p.preview+'"><span class="mname">'+p.displayName+'</span><span class="mcoord">'+p.lat.toFixed(4)+', '+p.lon.toFixed(4)+'</span>';
-  d.addEventListener('click',()=>{leafletMap.setView([p.lat,p.lon],16);markers[p.id]&&markers[p.id].openPopup();});
+  const d=makeMapListItem(p,
+    '<img src="'+p.preview+'" alt="'+escapeAttr(p.displayName)+'"><span class="mname">'+escapeAttr(p.displayName)+'</span><span class="mcoord">'+p.lat.toFixed(4)+', '+p.lon.toFixed(4)+'</span>',
+    '',
+    ()=>{leafletMap.setView([p.lat,p.lon],16);markers[p.id]&&markers[p.id].openPopup();}
+  );
   listGps.appendChild(d);
 
   placingId=null;
@@ -1143,6 +1280,11 @@ function renderExport(){
   const noGeo=gisSelected.length-geo.length;
   let html='<strong>'+geo.length+'</strong> photo'+(geo.length>1?'s':'')+' géolocalisée'+(geo.length>1?'s':'')+' prête'+(geo.length>1?'s':'')+' à exporter.';
   if(noGeo>0) html+='<br><span style="color:var(--warn)">⚠ '+noGeo+' photo'+(noGeo>1?'s':'')+' sans localisation (non incluse'+(noGeo>1?'s':'')+')</span>';
+  const withSizes=geo.filter(p=>p.blob);
+  if(withSizes.length){
+    const to=withSizes.reduce((a,p)=>a+p.file.size,0),tc=withSizes.reduce((a,p)=>a+p.compSize,0),sv=to-tc;
+    html+='<br><br>Taille totale des photos : <strong>'+fmtSize(to)+'</strong> → <strong>'+fmtSize(tc)+'</strong> ('+(to>0?'−'+((sv/to)*100).toFixed(0):0)+'%)';
+  }
   html+='<br><br>Le ZIP contiendra : <strong>projet QGIS</strong> (.qgs) + <strong>GeoJSON</strong> + <strong>CSV</strong> + <strong>Shapefile réel</strong> (.shp/.shx/.dbf/.prj) + photos JPEG<br><span style="font-size:11px;color:var(--text4)">Double-cliquez sur le .qgs → tout est prêt dans QGIS (le Shapefile est fourni en plus, utilisable dans n\'importe quel logiciel SIG)</span>';
   $('#exportSummary').innerHTML=html;
 }
@@ -1150,8 +1292,9 @@ function renderExport(){
 $('#btnExport').addEventListener('click',async()=>{
   const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null&&p.blob);
   if(!geo.length){alert('Aucune photo géolocalisée et compressée à exporter.');return;}
-  const btn=$('#btnExport'),st=$('#exportStatus');
+  const btn=$('#btnExport'),st=$('#exportStatus'),barWrap=$('#exportBarWrap'),bar=$('#exportBar');
   btn.disabled=true;btn.textContent='⏳ Génération…';st.textContent='Création des fichiers SIG…';
+  barWrap.classList.remove('hidden');bar.style.width='0';
   try{
     const used=new Set();
     const pts=geo.map(p=>{
@@ -1200,9 +1343,14 @@ $('#btnExport').addEventListener('click',async()=>{
       +'Projection : WGS 84 (EPSG:4326) pour Shapefile/GeoJSON/CSV, projet QGIS en Pseudo-Mercator (EPSG:3857)\n'
       +'Fond de carte : IGN Géoplateforme WMTS (data.geopf.fr)\n'
       +'Photos : '+pts.length+' (format JPEG universel)\n');
-    st.textContent='Compression du ZIP…';
-    const c=await zip.generateAsync({type:'blob'});
+    st.textContent='Compression du ZIP… 0%';
+    const c=await zip.generateAsync({type:'blob'},meta=>{
+      const pct=Math.round(meta.percent);
+      bar.style.width=pct+'%';
+      st.textContent='Compression du ZIP… '+pct+'%';
+    });
     const a=document.createElement('a');a.href=URL.createObjectURL(c);a.download='export_qgis_photos.zip';a.click();
+    bar.style.width='100%';
     st.textContent='✓ Export terminé !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
   btn.disabled=false;btn.textContent='🌍 Générer et télécharger le ZIP';
@@ -1223,13 +1371,14 @@ function goToStep(s){
   if(s===1)renderRename();
   if(s===2){$('#compStart').disabled=false;$('#compStart').textContent='Lancer la compression';$('#compBar').style.width='0';$('#compLabel').textContent='Prêt à compresser';$('#compResults').classList.add('hidden');}
   if(s===3){setTimeout(()=>{renderMap();},150);}
-  if(s===4)renderExport();
+  if(s===4){renderExport();$('#exportBarWrap').classList.add('hidden');$('#exportStatus').textContent='';}
   updateNav();
 }
 
 function updateNav(){
   const prev=$('#prevBtn'),next=$('#nextBtn'),nav=$('#stepNav');
   nav.style.display=gisAll.length?'flex':'none';
+  $('#projectBar').classList.toggle('hidden',!gisAll.length);
   prev.style.visibility=currentStep>0?'visible':'hidden';
   if(currentStep===0){
     const cnt=gisAll.filter(p=>p.selected).length;
