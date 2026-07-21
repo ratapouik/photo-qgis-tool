@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Photo Compressor + Export QGIS</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
@@ -197,11 +197,68 @@
   .leaflet-popup-content{font-family:'DM Sans',sans-serif;font-size:12px}
   .leaflet-popup-content img{border-radius:8px;max-width:200px}
 
-  @media(max-width:500px){
-    .select-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
-    .qc-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
-    .stepper{gap:0}.step-line{width:20px}
-    .step-dot{width:30px;height:30px;font-size:11px}
+  /* ============================================================
+     RESPONSIVE — tablette et mobile (usage terrain)
+     ============================================================ */
+  @media(max-width:900px){
+    body{padding:0 14px 16px}
+    .header{padding:20px 0 16px}
+    .header p{font-size:13px;padding:0 8px}
+    .tabs{gap:2px}
+    .tab{flex:1;padding:12px 10px;font-size:13px;text-align:center}
+
+    /* Cibles tactiles plus grandes pour une utilisation sur le terrain */
+    .btn{padding:12px 18px;font-size:14px}
+    .btn-sm{padding:9px 14px;font-size:13px}
+    .sel-check{width:30px;height:30px;font-size:16px}
+    .qc-remove{width:30px;height:30px;font-size:17px}
+    .preset-btn{padding:10px 16px}
+
+    /* Empêche le zoom automatique iOS sur les champs (nécessite font-size >= 16px) */
+    .select-toolbar input[type="text"],.select-toolbar select,
+    .bulk-rename-bar input,.bulk-rename-bar select,
+    .rename-row input{font-size:16px}
+
+    /* Barre de recherche/tri et renommage en masse : empilées, pleine largeur */
+    .select-toolbar{flex-direction:column;align-items:stretch}
+    .select-toolbar input[type="text"]{max-width:none}
+    .gps-filter{justify-content:center}
+    .bulk-rename-bar{flex-direction:column;align-items:stretch;text-align:center}
+    .bulk-rename-bar .b-pattern,.bulk-rename-bar .b-num,.bulk-rename-bar select{width:100%}
+    .bulk-rename-bar label{margin-top:4px}
+    .bulk-rename-bar button{width:100%;justify-content:center}
+
+    /* Carte : moins haute pour garder les listes/actions accessibles sans trop scroller */
+    #locateMap{height:340px}
+    .map-photo-item img{width:64px;height:48px}
+
+    /* Panneau photo à placer : empilé au lieu de côte à côte */
+    .photo-preview-panel{flex-direction:column;align-items:stretch;text-align:center}
+    .photo-preview-panel img{max-width:100%;max-height:200px;margin:0 auto}
+
+    /* Barre de navigation d'étape : boutons pleine largeur, plus faciles à
+       atteindre au pouce. Pas de position "sticky" : sur une étape courte (peu
+       de photos), un bandeau collant recouvrirait le contenu au-dessus — on
+       préfère un bandeau qui reste dans le flux normal de la page. */
+    .step-nav{
+      margin:16px -14px 0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+      background:var(--bg);border-top:1px solid var(--border);
+    }
+    .step-nav .btn{flex:1;justify-content:center}
+  }
+
+  @media(max-width:560px){
+    body{padding:0 10px 16px}
+    .step-nav{margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px}
+    .select-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+    .qc-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+    .stepper{gap:0}.step-line{width:14px}
+    .step-dot{width:28px;height:28px;font-size:11px}
+    .step-label{font-size:9px}
+    .dropzone{padding:28px 16px}
+    .qc-stats{flex-direction:column;align-items:stretch;text-align:center}
+    .qc-stats-actions{justify-content:center}
+    .map-sidebar{gap:12px}
   }
 </style>
 </head>
@@ -1162,8 +1219,10 @@ function initMap(){
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,opacity:0.35})
   ]);
   osm.addTo(leafletMap);
+  // Replié par défaut sur petit écran pour ne pas empiéter sur la carte (usage terrain).
+  const isNarrowScreen=window.matchMedia('(max-width:700px)').matches;
   L.control.layers({'🗺 Plan OSM':osm,'🛰 Satellite':satellite,'🛰+🗺 Hybride':hybrid},{},
-    {position:'topright',collapsed:false}).addTo(leafletMap);
+    {position:'topright',collapsed:isNarrowScreen}).addTo(leafletMap);
   leafletMap.on('click',onMapClick);
 }
 
