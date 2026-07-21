@@ -460,6 +460,7 @@
     <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="btn btn-blue" id="btnExport" style="font-size:15px;padding:14px 28px">🌍 Générer et télécharger le ZIP</button>
       <button class="btn btn-outline" id="btnExportEmail" style="font-size:15px;padding:14px 28px">📧 Envoyer par e-mail</button>
+      <button class="btn btn-outline" id="btnExportPdf" style="font-size:15px;padding:14px 28px">📄 Compte-rendu PDF</button>
     </div>
     <div class="export-bar-wrap hidden" id="exportBarWrap">
       <div class="compress-bar"><div class="compress-bar-fill" id="exportBar"></div></div>
@@ -491,9 +492,10 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js"></script>
 <script>
 window.addEventListener('load',()=>{
-  if(typeof L==='undefined'||typeof JSZip==='undefined'||typeof exifr==='undefined'||typeof heic2any==='undefined'){
+  if(typeof L==='undefined'||typeof JSZip==='undefined'||typeof exifr==='undefined'||typeof heic2any==='undefined'||typeof window.jspdf==='undefined'){
     document.getElementById('libWarning').classList.remove('hidden');
   }
 });
@@ -949,9 +951,8 @@ function getLiveGeolocation(timeout){
 // ---- Précheck GPS : fenêtre qui suit la position en direct et affiche la
 // précision (en mètres) avant de laisser l'utilisateur ouvrir l'appareil photo. ----
 function gpsQuality(acc){
-  if(acc<=10)return{label:'Excellente précision',cls:'good'};
-  if(acc<=25)return{label:'Bonne précision',cls:'good'};
-  if(acc<=50)return{label:'Précision moyenne',cls:'medium'};
+  if(acc<5)return{label:'Bonne précision',cls:'good'};
+  if(acc<20)return{label:'Précision moyenne',cls:'medium'};
   return{label:'Précision faible — déplacez-vous à découvert si possible',cls:'bad'};
 }
 let gpsWatchId=null;
@@ -1642,6 +1643,137 @@ $('#btnExportEmail').addEventListener('click',async()=>{
     st.textContent='Ouverture du partage…';
     await shareOrEmailFile(blob,'export_qgis_photos.zip','Export QGIS - Photos géolocalisées','Voici l\'export QGIS (projet + GeoJSON + Shapefile + photos).');
     st.textContent='✓ Prêt !';
+  }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
+  btn.disabled=false;btn.textContent=orig;
+});
+
+// ---- Compte-rendu photographique PDF ----
+// Charge un Blob image dans un <img> via une URL locale (blob:), sans jamais
+// passer par un serveur distant : pas de souci de CORS/tainted canvas pour jsPDF.
+function loadImageElement(blob){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(blob);
+    const img=new Image();
+    img.onload=()=>resolve({img,url});
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('image illisible'));};
+    img.src=url;
+  });
+}
+
+// Page 1 (paysage) : plan schématique (projection équirectangulaire locale,
+// pas un vrai fond de carte — évite toute dépendance à des tuiles distantes)
+// avec les positions numérotées. Pages suivantes (portrait) : photos en 2
+// colonnes, numéro + titre, dans le même ordre de numérotation que le plan.
+async function buildPhotoReportPDF(points,setStatus){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();
+  const margin=15;
+
+  setStatus('Création du plan de localisation…');
+  doc.setFont('helvetica','bold');doc.setFontSize(18);
+  doc.text('Plan de localisation des photos',pw/2,margin,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(110);
+  doc.text('Généré le '+new Date().toLocaleDateString('fr-FR')+' — '+points.length+' photo'+(points.length>1?'s':'')+' géolocalisée'+(points.length>1?'s':''),pw/2,margin+7,{align:'center'});
+  doc.setTextColor(0);
+
+  const planX=margin,planY=margin+16,planW=pw-margin*2,planH=ph-margin-planY;
+  doc.setDrawColor(190);doc.setLineWidth(0.3);
+  doc.rect(planX,planY,planW,planH);
+
+  let lonMin=Infinity,lonMax=-Infinity,latMin=Infinity,latMax=-Infinity;
+  points.forEach(p=>{if(p.lon<lonMin)lonMin=p.lon;if(p.lon>lonMax)lonMax=p.lon;if(p.lat<latMin)latMin=p.lat;if(p.lat>latMax)latMax=p.lat;});
+  if(lonMin===lonMax){lonMin-=0.001;lonMax+=0.001;}
+  if(latMin===latMax){latMin-=0.001;latMax+=0.001;}
+  const padLon=(lonMax-lonMin)*0.15,padLat=(latMax-latMin)*0.15;
+  lonMin-=padLon;lonMax+=padLon;latMin-=padLat;latMax+=padLat;
+  const meanLat=(latMin+latMax)/2;
+  const kx=Math.max(Math.cos(meanLat*Math.PI/180),0.05); // correction longitude→distance
+  const spanX=(lonMax-lonMin)*kx,spanY=(latMax-latMin);
+  const innerMargin=14;
+  const scale=Math.min((planW-innerMargin*2)/spanX,(planH-innerMargin*2)/spanY);
+  const usedW=spanX*scale,usedH=spanY*scale;
+  const offX=planX+(planW-usedW)/2,offY=planY+(planH-usedH)/2;
+  function project(lon,lat){
+    return [offX+(lon-lonMin)*kx*scale,offY+(latMax-lat)*scale];
+  }
+
+  points.forEach((p,i)=>{
+    const [x,y]=project(p.lon,p.lat);
+    doc.setFillColor(41,182,246);doc.setDrawColor(20,80,120);doc.setLineWidth(0.25);
+    doc.circle(x,y,3.4,'FD');
+    doc.setTextColor(255);doc.setFontSize(7);doc.setFont('helvetica','bold');
+    doc.text(String(i+1),x,y+1.1,{align:'center'});
+  });
+  doc.setTextColor(0);
+
+  // flèche du nord
+  const nx=planX+planW-12,ny=planY+16;
+  doc.setDrawColor(90);doc.setLineWidth(0.5);
+  doc.line(nx,ny+8,nx,ny-6);
+  doc.line(nx,ny-6,nx-2.2,ny-1.5);
+  doc.line(nx,ny-6,nx+2.2,ny-1.5);
+  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(60);
+  doc.text('N',nx,ny+12,{align:'center'});
+  doc.setTextColor(0);
+
+  // légende des numéros (liste compacte en bas du plan si la place le permet)
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(90);
+  doc.text('Les numéros correspondent aux photos des pages suivantes.',planX,planY+planH+7);
+  doc.setTextColor(0);
+
+  // Pages photos : 2 colonnes, portrait
+  const mp=14,gutter=8;
+  const colW=(210-mp*2-gutter)/2;
+  const colXs=[mp,mp+colW+gutter];
+  const maxY=297-mp;
+  doc.addPage('a4','portrait');
+  let cursorY=mp;
+
+  for(let i=0;i<points.length;i+=2){
+    setStatus('Ajout des photos… '+(i+1)+'/'+points.length);
+    const rowPoints=[points[i]];
+    if(points[i+1])rowPoints.push(points[i+1]);
+    const loaded=[];
+    for(const p of rowPoints){
+      const {img,url}=await loadImageElement(p.blob);
+      const imgH=colW*(img.naturalHeight/img.naturalWidth);
+      loaded.push({p,img,url,imgH});
+    }
+    const captionH=11;
+    const rowH=Math.max(...loaded.map(l=>l.imgH))+captionH;
+    if(cursorY+rowH>maxY){
+      doc.addPage('a4','portrait');
+      cursorY=mp;
+    }
+    loaded.forEach((l,idx)=>{
+      const x=colXs[idx],num=i+idx+1;
+      doc.addImage(l.img,'JPEG',x,cursorY,colW,l.imgH);
+      doc.setDrawColor(210);doc.setLineWidth(0.2);
+      doc.rect(x,cursorY,colW,l.imgH);
+      doc.setFillColor(41,182,246);doc.setDrawColor(20,80,120);
+      doc.circle(x+4.2,cursorY+4.2,3.6,'FD');
+      doc.setTextColor(255);doc.setFontSize(7.5);doc.setFont('helvetica','bold');
+      doc.text(String(num),x+4.2,cursorY+5.4,{align:'center'});
+      doc.setTextColor(30);doc.setFont('helvetica','bold');doc.setFontSize(9.5);
+      doc.text(l.p.displayName,x,cursorY+l.imgH+5.5,{maxWidth:colW});
+      URL.revokeObjectURL(l.url);
+    });
+    cursorY+=rowH+gutter;
+  }
+
+  return doc;
+}
+
+$('#btnExportPdf').addEventListener('click',async()=>{
+  const btn=$('#btnExportPdf'),orig=btn.textContent,st=$('#exportStatus');
+  const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null&&p.blob);
+  if(!geo.length){alert('Aucune photo géolocalisée et compressée à inclure dans le compte-rendu.');return;}
+  btn.disabled=true;btn.textContent='⏳ Génération…';
+  try{
+    const doc=await buildPhotoReportPDF(geo,msg=>st.textContent=msg);
+    doc.save('compte-rendu-photos.pdf');
+    st.textContent='✓ Compte-rendu généré !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
   btn.disabled=false;btn.textContent=orig;
 });
