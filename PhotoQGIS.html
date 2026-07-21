@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photo Compressor + Export QGIS</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@700&display=swap');
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0a0b;--card:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);
+    --accent:#34c759;--accent-bg:rgba(52,199,89,0.12);--accent-border:rgba(52,199,89,0.15);
+    --accent2:#5ac8fa;--accent2-bg:rgba(90,200,250,0.12);--accent2-border:rgba(90,200,250,0.15);
+    --warn:#ff9500;--warn-bg:rgba(255,149,0,0.12);--warn-border:rgba(255,149,0,0.2);
+    --danger:#ff3b30;--danger-bg:rgba(255,59,48,0.12);--danger-border:rgba(255,59,48,0.2);
+    --text:#f0f0f0;--text2:#ccc;--text3:#888;--text4:#555;
+  }
+  body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;padding:0 24px 60px;-webkit-font-smoothing:antialiased}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+  /* TABS */
+  .tabs{display:flex;justify-content:center;gap:4px;padding:24px 0 0;animation:fadeUp .4s ease}
+  .tab{padding:10px 24px;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px;font-weight:600;font-family:inherit;transition:all .2s}
+  .tab.active{background:rgba(255,255,255,0.05);color:var(--text)}
+  .tab-content{display:none}.tab-content.active{display:block}
+
+  .header{text-align:center;padding:32px 0 24px;animation:fadeUp .5s ease}
+  .header .tag{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:4px;text-transform:uppercase;margin-bottom:10px}
+  .header h1{font-size:clamp(22px,4vw,34px);font-weight:700;line-height:1.1;background:linear-gradient(135deg,#fff 0%,#888 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .header p{color:var(--text4);font-size:13px;margin-top:8px;max-width:520px;margin-inline:auto}
+
+  /* Buttons */
+  .btn{padding:10px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn-outline{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:#aaa}
+  .btn-green{background:var(--accent);color:#000;font-weight:700}
+  .btn-green:hover:not(:disabled){filter:brightness(1.1)}
+  .btn-blue{background:var(--accent2);color:#000;font-weight:700}
+  .btn-blue:hover:not(:disabled){filter:brightness(1.1)}
+  .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
+
+  /* Global lib-load warning banner */
+  .lib-warning{max-width:620px;margin:16px auto 0;padding:12px 16px;border-radius:10px;background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);font-size:13px;text-align:center;animation:fadeUp .3s ease}
+
+  /* Dropzone */
+  .dropzone{max-width:560px;margin:0 auto 8px;border:2px dashed var(--border);border-radius:20px;padding:40px 24px;text-align:center;cursor:pointer;background:rgba(255,255,255,0.02);transition:all .3s;animation:fadeUp .5s ease .1s both}
+  .dropzone.over{border-color:var(--accent);background:rgba(52,199,89,0.06)}
+  .dropzone .icon{font-size:36px;margin-bottom:10px;opacity:.6}
+  .dropzone .label{font-size:15px;font-weight:600;color:var(--text2)}
+  .dropzone .hint{font-size:12px;color:var(--text4);margin-top:6px}
+  .load-status{max-width:560px;margin:0 auto 20px;text-align:center;font-size:12px;color:var(--accent2);min-height:16px}
+
+  /* STEPPER */
+  .stepper{max-width:660px;margin:0 auto 28px;display:flex;align-items:center;justify-content:center;gap:0;animation:fadeUp .4s ease}
+  .step-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid var(--border);color:var(--text4);background:transparent;transition:all .3s;flex-shrink:0}
+  .step-dot.active{border-color:var(--accent2);color:var(--accent2);background:var(--accent2-bg)}
+  .step-dot.done{border-color:var(--accent);color:#fff;background:var(--accent)}
+  .step-line{height:2px;width:40px;background:var(--border);transition:background .3s;flex-shrink:0}
+  .step-line.done{background:var(--accent)}
+  .step-label{font-size:10px;text-align:center;color:var(--text4);margin-top:4px;transition:color .3s}
+  .step-label.active{color:var(--accent2)}
+  .step-label.done{color:var(--accent)}
+  .step-item{display:flex;flex-direction:column;align-items:center}
+
+  .step-panel{display:none;animation:fadeUp .4s ease}
+  .step-panel.active{display:block}
+
+  /* Nav */
+  .step-nav{max-width:660px;margin:24px auto 0;display:flex;justify-content:space-between;align-items:center}
+
+  /* Select toolbar (search + sort) */
+  .select-toolbar{max-width:720px;margin:0 auto 14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center}
+  .select-toolbar input[type="text"],.select-toolbar select{
+    background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;
+    color:var(--text);padding:8px 12px;font-size:13px;font-family:inherit;outline:none;
+  }
+  .select-toolbar input[type="text"]{flex:1;min-width:160px;max-width:260px}
+  .select-toolbar input[type="text"]:focus,.select-toolbar select:focus{border-color:var(--accent2)}
+
+  /* Select grid */
+  .select-grid{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
+  .sel-card{position:relative;border-radius:12px;overflow:hidden;border:2px solid transparent;cursor:pointer;transition:all .2s;animation:fadeUp .3s ease both}
+  .sel-card.selected{border-color:var(--accent2)}
+  .sel-card img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#111}
+  .sel-check{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,0.5);background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:14px;color:transparent;transition:all .2s;backdrop-filter:blur(4px)}
+  .sel-card.selected .sel-check{background:var(--accent2);border-color:var(--accent2);color:#000}
+  .sel-name{position:absolute;bottom:0;left:0;right:0;padding:4px 8px;background:linear-gradient(transparent,rgba(0,0,0,.7));font-size:11px;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sel-gps{position:absolute;top:6px;right:6px;font-size:16px}
+  .select-empty{text-align:center;color:var(--text4);font-size:13px;padding:30px 0}
+
+  /* Bulk rename bar */
+  .bulk-rename-bar{max-width:620px;margin:0 auto 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:12px}
+  .bulk-rename-bar input,.bulk-rename-bar select{
+    background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;
+    color:var(--text);padding:8px 10px;font-size:13px;font-family:inherit;outline:none;
+  }
+  .bulk-rename-bar input:focus,.bulk-rename-bar select:focus{border-color:var(--accent2)}
+  .bulk-rename-bar .b-pattern{width:170px}
+  .bulk-rename-bar .b-num{width:64px}
+  .bulk-rename-bar label{font-size:11px;color:var(--text3)}
+
+  /* Rename table */
+  .rename-list{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+  .rename-row{display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px;animation:fadeUp .3s ease both}
+  .rename-row img{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:#111}
+  .rename-row input{flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:inherit}
+  .rename-row input:focus{outline:none;border-color:var(--accent2)}
+  .rename-ext{color:var(--text4);font-size:12px;flex-shrink:0}
+  .dup-warning{max-width:620px;margin:0 auto 12px;padding:10px 14px;border-radius:10px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn);font-size:12px;text-align:center}
+
+  /* Quick-compress results (Tab 1) */
+  .qc-stats{max-width:620px;margin:0 auto 20px;display:none;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px;border-radius:14px;background:rgba(52,199,89,.06);border:1px solid var(--accent-border);animation:fadeUp .3s ease}
+  .qc-stats.visible{display:flex}
+  .qc-stats .sub{font-size:12px;color:var(--text3)}
+  .qc-stats .big{font-size:22px;font-weight:700;font-family:'Space Mono',monospace}
+  .qc-stats .big span{font-size:13px;color:var(--text3);font-weight:500;margin-left:4px}
+  .qc-stats-actions{display:flex;gap:8px}
+  .qc-grid{max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+  .qc-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;animation:fadeUp .3s ease both}
+  .qc-card-img{position:relative;aspect-ratio:1;background:#111}
+  .qc-card-img img{width:100%;height:100%;object-fit:cover;display:block}
+  .qc-remove{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+  .qc-remove:hover{background:var(--danger)}
+  .qc-badge{position:absolute;bottom:6px;left:6px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;font-family:'Space Mono',monospace;background:rgba(0,0,0,.6);color:var(--accent)}
+  .qc-badge.same{color:var(--text3)}
+  .qc-body{padding:10px 12px}
+  .qc-name{font-size:12px;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+  .qc-sizes{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px}
+  .qc-sizes .arrow{color:var(--text4)}
+  .qc-sizes .after{color:var(--accent)}
+
+  /* Compress (wizard) */
+  .compress-status{max-width:620px;margin:0 auto;text-align:center}
+  .compress-bar{height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;margin:16px 0}
+  .compress-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s;width:0}
+  .compress-results{max-width:620px;margin:16px auto 0;display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto}
+  .comp-row{display:flex;align-items:center;gap:12px;padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:12px}
+  .comp-row img{width:32px;height:32px;border-radius:4px;object-fit:cover;background:#111}
+  .comp-row .name{flex:1;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .comp-row .sizes{color:var(--text3);white-space:nowrap}
+  .comp-row .pct{color:var(--accent);font-weight:700;font-family:'Space Mono',monospace;min-width:50px;text-align:right}
+
+  /* Map */
+  #locateMap{height:500px;border-radius:14px;border:1px solid var(--border);margin-bottom:16px}
+  .map-wrap{max-width:1000px;margin:0 auto}
+  .map-sidebar{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .map-sidebar-section{flex:1;min-width:240px}
+  .map-sidebar-section h3{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:8px}
+  .map-photo-list{display:flex;flex-direction:column;gap:6px;max-height:350px;overflow-y:auto}
+  .map-photo-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:background .15s;font-size:13px}
+  .map-photo-item:hover{background:rgba(255,255,255,0.05)}
+  .map-photo-item.active{background:var(--accent2-bg);color:var(--accent2)}
+  .map-photo-item img{width:80px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#111}
+  .map-photo-item .mname{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .map-photo-item .mcoord{font-family:'Space Mono',monospace;font-size:10px;color:var(--text4)}
+  /* Photo preview panel */
+  .photo-preview-panel{margin-bottom:16px;border-radius:14px;border:1px solid var(--accent2-border);background:rgba(0,0,0,0.4);overflow:hidden;animation:fadeUp .3s ease;display:flex;align-items:center;gap:20px;padding:16px}
+  .photo-preview-panel img{max-height:280px;max-width:50%;border-radius:10px;object-fit:contain;flex-shrink:0}
+  .photo-preview-panel .preview-info{flex:1}
+  .photo-preview-panel .preview-name{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px}
+  .photo-preview-panel .preview-hint{font-size:13px;color:var(--accent2);line-height:1.5}
+  .map-instructions{text-align:center;padding:12px;background:var(--accent2-bg);border:1px solid var(--accent2-border);border-radius:10px;font-size:13px;color:var(--accent2);margin-bottom:16px}
+  .map-instructions.all-done{background:var(--accent-bg);border-color:var(--accent-border);color:var(--accent)}
+
+  /* Presets */
+  .presets-inline{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px}
+  .preset-btn{
+    padding:8px 18px;border-radius:24px;border:1px solid var(--border);
+    background:rgba(255,255,255,0.04);color:var(--text3);cursor:pointer;
+    font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;
+    transition:all .2s;-webkit-appearance:none;appearance:none;outline:none;
+  }
+  .preset-btn.active{border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
+  .preset-btn:hover:not(.active){border-color:rgba(255,255,255,0.25);color:var(--text2);background:rgba(255,255,255,0.08)}
+  .slider-wrap-inline{max-width:300px;margin:0 auto 16px;text-align:center}
+  .slider-wrap-inline input[type=range]{accent-color:var(--accent)}
+
+  .summary-box{max-width:620px;margin:0 auto 16px;padding:16px 20px;border-radius:14px;font-size:13px;animation:fadeUp .3s ease}
+  .summary-box strong{font-family:'Space Mono',monospace}
+
+  .hidden{display:none!important}
+
+  /* Leaflet popup override */
+  .leaflet-popup-content-wrapper{background:#1a1a1b;color:#eee;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+  .leaflet-popup-tip{background:#1a1a1b}
+  .leaflet-popup-content{font-family:'DM Sans',sans-serif;font-size:12px}
+  .leaflet-popup-content img{border-radius:8px;max-width:200px}
+
+  @media(max-width:500px){
+    .select-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
+    .qc-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+    .stepper{gap:0}.step-line{width:20px}
+    .step-dot{width:30px;height:30px;font-size:11px}
+  }
+</style>
+</head>
+<body>
+
+<div id="libWarning" class="lib-warning hidden">⚠ Certaines librairies n'ont pas pu être chargées (vérifiez votre connexion internet), l'outil risque de ne pas fonctionner correctement.</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="compress">📸 Compression rapide</button>
+  <button class="tab" data-tab="gis">🌍 Export QGIS</button>
+</div>
+
+<!-- ========== TAB 1: QUICK COMPRESS ========== -->
+<div class="tab-content active" id="tab-compress">
+  <div class="header">
+    <div class="tag" style="color:var(--accent)">Compression</div>
+    <h1>Compression rapide</h1>
+    <p>Glissez vos images (JPEG, PNG, HEIC/HEIF…), compressez et téléchargez. Tout reste local, dans votre navigateur.</p>
+  </div>
+  <div class="presets-inline" id="qPresets">
+    <button class="preset-btn" data-q="0.85">✦ Légère</button>
+    <button class="preset-btn active" data-q="0.6">✦✦ Moyenne</button>
+    <button class="preset-btn" data-q="0.35">✦✦✦ Forte</button>
+    <button class="preset-btn" data-q="custom">⚙ Custom</button>
+  </div>
+  <div class="slider-wrap-inline hidden" id="qSliderWrap">
+    <span style="font-size:13px;color:var(--text3)">Qualité : <span style="color:var(--accent);font-weight:700" id="qSliderVal">60</span>%</span>
+    <input type="range" id="qSlider" min="5" max="100" value="60" style="width:100%;margin-top:6px">
+  </div>
+  <div class="dropzone" id="qDropzone">
+    <div class="icon" id="qDropIcon">📸</div>
+    <div class="label">Glissez vos photos ici</div>
+    <div class="hint">ou cliquez pour parcourir</div>
+  </div>
+  <input type="file" id="qFileInput" accept="image/*,.heic,.heif" multiple hidden>
+  <div class="load-status" id="qLoadStatus"></div>
+  <div class="qc-stats" id="qStats">
+    <div><div class="sub" id="qStatsCount"></div><div class="big" id="qStatsSaved"></div></div>
+    <div class="qc-stats-actions">
+      <button class="btn btn-outline" id="qBtnClear">Effacer</button>
+      <button class="btn btn-green" id="qBtnDl">↓ Télécharger (.zip)</button>
+    </div>
+  </div>
+  <div class="qc-grid" id="qGrid"></div>
+</div>
+
+<!-- ========== TAB 2: QGIS EXPORT WIZARD ========== -->
+<div class="tab-content" id="tab-gis">
+  <div class="header">
+    <div class="tag" style="color:var(--accent2)">Export QGIS</div>
+    <h1>Shapefile + Photos</h1>
+    <p>Sélectionnez, renommez, compressez et localisez vos photos pour QGIS (GeoJSON, CSV et Shapefile réel inclus).</p>
+  </div>
+
+  <!-- Stepper -->
+  <div class="stepper" id="stepper">
+    <div class="step-item"><div class="step-dot active" data-s="0">1</div><div class="step-label active">Sélection</div></div>
+    <div class="step-line"></div>
+    <div class="step-item"><div class="step-dot" data-s="1">2</div><div class="step-label">Renommer</div></div>
+    <div class="step-line"></div>
+    <div class="step-item"><div class="step-dot" data-s="2">3</div><div class="step-label">Compresser</div></div>
+    <div class="step-line"></div>
+    <div class="step-item"><div class="step-dot" data-s="3">4</div><div class="step-label">Localiser</div></div>
+    <div class="step-line"></div>
+    <div class="step-item"><div class="step-dot" data-s="4">5</div><div class="step-label">Exporter</div></div>
+  </div>
+
+  <!-- STEP 0: SELECT -->
+  <div class="step-panel active" id="step-0">
+    <div class="dropzone" id="gisDropzone">
+      <div class="icon" id="gisIcon">📂</div>
+      <div class="label">Sélectionnez un dossier de photos</div>
+      <div class="hint">Toutes les images seront listées (JPEG, PNG, HEIC/HEIF…) — vous choisirez lesquelles garder</div>
+    </div>
+    <input type="file" id="folderInput" webkitdirectory multiple hidden>
+    <div class="load-status" id="gisLoadStatus"></div>
+    <div class="hidden" id="selectControls" style="text-align:center;margin-bottom:12px">
+      <button class="btn btn-sm btn-outline" id="selAll">Tout sélectionner</button>
+      <button class="btn btn-sm btn-outline" id="selNone" style="margin-left:4px">Tout désélectionner</button>
+      <span style="margin-left:12px;font-size:13px;color:var(--text3)" id="selCount"></span>
+    </div>
+    <div class="hidden select-toolbar" id="selectToolbar">
+      <input type="text" id="selSearch" placeholder="🔍 Rechercher par nom…">
+      <select id="selSort">
+        <option value="name-asc">Nom (A→Z)</option>
+        <option value="name-desc">Nom (Z→A)</option>
+        <option value="date-desc">Date de prise (récent→ancien)</option>
+        <option value="date-asc">Date de prise (ancien→récent)</option>
+        <option value="gps-first">📍 GPS d'abord</option>
+        <option value="nogps-first">⚠ Sans GPS d'abord</option>
+      </select>
+    </div>
+    <div class="select-grid" id="selectGrid"></div>
+  </div>
+
+  <!-- STEP 1: RENAME -->
+  <div class="step-panel" id="step-1">
+    <div class="summary-box" style="background:var(--accent2-bg);border:1px solid var(--accent2-border);color:var(--accent2)">
+      Renommez vos photos ci-dessous. Le nom sera utilisé dans la table attributaire du Shapefile / GeoJSON.
+    </div>
+    <div class="bulk-rename-bar">
+      <label>Motif :</label>
+      <input type="text" class="b-pattern" id="bulkPattern" placeholder="Photo-{n}" value="Photo-{n}">
+      <label>Début :</label>
+      <input type="number" class="b-num" id="bulkStart" value="1" min="0">
+      <label>Chiffres :</label>
+      <select id="bulkPad">
+        <option value="auto">Auto</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+      <button class="btn btn-sm btn-blue" id="bulkApply">Appliquer à tous</button>
+      <button class="btn btn-sm btn-outline" id="bulkReset">↺ Noms d'origine</button>
+    </div>
+    <div class="dup-warning hidden" id="dupWarning"></div>
+    <div class="rename-list" id="renameList"></div>
+  </div>
+
+  <!-- STEP 2: COMPRESS -->
+  <div class="step-panel" id="step-2">
+    <div class="presets-inline" id="gPresets">
+      <button class="preset-btn" data-q="0.85">✦ Légère</button>
+      <button class="preset-btn active" data-q="0.6">✦✦ Moyenne</button>
+      <button class="preset-btn" data-q="0.35">✦✦✦ Forte</button>
+    </div>
+    <div class="compress-status" id="compStatus">
+      <div style="font-size:14px;color:var(--text2)" id="compLabel">Prêt à compresser</div>
+      <div class="compress-bar"><div class="compress-bar-fill" id="compBar"></div></div>
+      <button class="btn btn-green" id="compStart">Lancer la compression</button>
+    </div>
+    <div class="compress-results hidden" id="compResults"></div>
+  </div>
+
+  <!-- STEP 3: LOCATE -->
+  <div class="step-panel" id="step-3">
+    <div class="map-instructions" id="mapInstr">
+      Cliquez sur une photo sans GPS dans la liste, puis cliquez sur la carte pour la placer. Glissez les marqueurs pour ajuster.
+    </div>
+    <div class="map-wrap">
+      <div class="photo-preview-panel hidden" id="photoPreview">
+        <img id="previewImg" src="">
+        <div class="preview-info">
+          <div class="preview-name" id="previewName"></div>
+          <div class="preview-hint" id="previewHint">📌 Cliquez sur la carte pour positionner cette photo</div>
+        </div>
+      </div>
+      <div class="map-sidebar" id="mapSidebar">
+        <div class="map-sidebar-section">
+          <h3>📍 Géolocalisées</h3>
+          <div class="map-photo-list" id="mapListGps"></div>
+        </div>
+        <div class="map-sidebar-section" id="mapNoGpsSection">
+          <h3>⚠ Sans GPS — à placer</h3>
+          <div class="map-photo-list" id="mapListNoGps"></div>
+        </div>
+      </div>
+      <div id="locateMap"></div>
+    </div>
+  </div>
+
+  <!-- STEP 4: EXPORT -->
+  <div class="step-panel" id="step-4">
+    <div class="summary-box" style="background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent)" id="exportSummary"></div>
+    <div style="text-align:center;margin-top:20px">
+      <button class="btn btn-blue" id="btnExport" style="font-size:15px;padding:14px 28px">🌍 Générer et télécharger le ZIP</button>
+    </div>
+    <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--text4)" id="exportStatus"></div>
+  </div>
+
+  <!-- Step navigation -->
+  <div class="step-nav" id="stepNav">
+    <button class="btn btn-outline" id="prevBtn">← Retour</button>
+    <button class="btn btn-blue" id="nextBtn">Suivant →</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script>
+window.addEventListener('load',()=>{
+  if(typeof L==='undefined'||typeof JSZip==='undefined'||typeof exifr==='undefined'||typeof heic2any==='undefined'){
+    document.getElementById('libWarning').classList.remove('hidden');
+  }
+});
+
+// ========== FICHIERS: détection HEIC / conversion / métadonnées ==========
+function isHeic(file){
+  const t=(file.type||'').toLowerCase();
+  if(t==='image/heic'||t==='image/heif')return true;
+  return /\.(heic|heif)$/i.test(file.name||'');
+}
+function isImageFile(file){
+  return (file.type||'').startsWith('image/')||isHeic(file);
+}
+
+// Renvoie {lat,lon,alt,takenAt} — s'appuie sur exifr (robuste, gère JPEG/HEIC/TIFF,
+// ne bloque jamais même sur fichier corrompu grâce au try/catch).
+async function readMeta(file){
+  const out={lat:null,lon:null,alt:null,takenAt:null};
+  try{
+    // Note: on n'utilise pas l'option "pick" d'exifr : elle filtre aussi les valeurs
+    // calculées (latitude/longitude), pas seulement les tags bruts, et casserait la
+    // lecture GPS. On désactive plutôt les segments non nécessaires pour rester léger.
+    const o=await exifr.parse(file,{
+      tiff:true,ifd0:true,exif:true,gps:true,
+      xmp:false,icc:false,iptc:false,jfif:false,ihdr:false,interop:false,makerNote:false,userComment:false
+    });
+    if(!o)return out;
+    if(typeof o.latitude==='number'&&typeof o.longitude==='number'){out.lat=o.latitude;out.lon=o.longitude;}
+    if(typeof o.GPSAltitude==='number'){
+      let ref=o.GPSAltitudeRef;
+      if(ref&&typeof ref==='object'&&typeof ref[0]!=='undefined')ref=ref[0];
+      out.alt=ref===1?-o.GPSAltitude:o.GPSAltitude;
+    }
+    const d=o.DateTimeOriginal||o.CreateDate;
+    if(d instanceof Date&&!isNaN(d))out.takenAt=d;
+  }catch(e){/* fichier illisible : on garde les valeurs par défaut, jamais de blocage */}
+  if(!out.takenAt&&typeof file.lastModified==='number')out.takenAt=new Date(file.lastModified);
+  return out;
+}
+
+// Décode un HEIC/HEIF en JPEG affichable par un <img>/canvas. Renvoie le File d'origine
+// tel quel pour les autres formats. Renvoie null si le décodage échoue.
+async function toRenderable(file){
+  if(!isHeic(file))return file;
+  try{
+    const r=await heic2any({blob:file,toType:'image/jpeg',quality:0.92});
+    return Array.isArray(r)?r[0]:r;
+  }catch(e){return null;}
+}
+
+// ========== NOMS DE FICHIERS ==========
+function sanitizeFilename(name){
+  let s=(name||'').normalize('NFC').replace(/[\\/:*?"<>|\x00-\x1F]/g,'_').trim().replace(/\.+$/,'');
+  if(!s)s='photo';
+  return s.slice(0,120);
+}
+function uniqueName(base,used){
+  let name=base,i=2;
+  while(used.has(name.toLowerCase())){name=base+'_'+i;i++;}
+  used.add(name.toLowerCase());
+  return name;
+}
+
+// ========== TEXT-ONLY GIS EXPORT (no binary QGIS project = no Windows Defender alerts) ==========
+function buildGeoJSON(pts){
+  return JSON.stringify({type:'FeatureCollection',crs:{type:'name',properties:{name:'urn:ogc:def:crs:EPSG::4326'}},features:pts.map((p,i)=>({type:'Feature',id:i+1,geometry:{type:'Point',coordinates:[p.lon,p.lat,p.alt||0]},properties:{name:p.name,photo:'photos/'+p.photoFile,latitude:p.lat,longitude:p.lon,altitude:p.alt||0}}))},null,2);
+}
+function buildCSV(pts){
+  return 'name,latitude,longitude,altitude,photo\n'+pts.map(p=>'"'+p.name.replace(/"/g,'""')+'",'+p.lat.toFixed(8)+','+p.lon.toFixed(8)+','+(p.alt||0).toFixed(2)+',"photos/'+p.photoFile+'"').join('\n');
+}
+
+// ---- Shapefile ESRI réel (.shp/.shx/.dbf/.prj/.cpg) — écrit à la main, sans dépendance ----
+function buildSHP_SHX(pts){
+  const n=pts.length;
+  const CONTENT=36; // shapeType(4)+X(8)+Y(8)+Z(8)+M(8), type PointZ=11
+  const shpSize=100+n*(8+CONTENT);
+  const shxSize=100+n*8;
+  const shpBuf=new ArrayBuffer(shpSize), shpDV=new DataView(shpBuf);
+  const shxBuf=new ArrayBuffer(shxSize), shxDV=new DataView(shxBuf);
+
+  let xmin=Infinity,ymin=Infinity,xmax=-Infinity,ymax=-Infinity,zmin=Infinity,zmax=-Infinity;
+  pts.forEach(p=>{
+    if(p.lon<xmin)xmin=p.lon; if(p.lon>xmax)xmax=p.lon;
+    if(p.lat<ymin)ymin=p.lat; if(p.lat>ymax)ymax=p.lat;
+    const z=p.alt||0; if(z<zmin)zmin=z; if(z>zmax)zmax=z;
+  });
+  if(!n){xmin=ymin=xmax=ymax=zmin=zmax=0;}
+
+  function header(dv,fileLenWords){
+    dv.setInt32(0,9994,false);
+    for(let i=4;i<=20;i+=4)dv.setInt32(i,0,false);
+    dv.setInt32(24,fileLenWords,false);
+    dv.setInt32(28,1000,true);
+    dv.setInt32(32,11,true); // PointZ
+    dv.setFloat64(36,xmin,true); dv.setFloat64(44,ymin,true);
+    dv.setFloat64(52,xmax,true); dv.setFloat64(60,ymax,true);
+    dv.setFloat64(68,zmin,true); dv.setFloat64(76,zmax,true);
+    dv.setFloat64(84,0,true); dv.setFloat64(92,0,true);
+  }
+  header(shpDV,shpSize/2);
+  header(shxDV,shxSize/2);
+
+  let shpOff=100,shxOff=100;
+  const NODATA=-1e39;
+  pts.forEach((p,i)=>{
+    const contentWords=CONTENT/2;
+    shpDV.setInt32(shpOff,i+1,false);
+    shpDV.setInt32(shpOff+4,contentWords,false);
+    let c=shpOff+8;
+    shpDV.setInt32(c,11,true); c+=4;
+    shpDV.setFloat64(c,p.lon,true); c+=8;
+    shpDV.setFloat64(c,p.lat,true); c+=8;
+    shpDV.setFloat64(c,p.alt||0,true); c+=8;
+    shpDV.setFloat64(c,NODATA,true);
+    shxDV.setInt32(shxOff,shpOff/2,false);
+    shxDV.setInt32(shxOff+4,contentWords,false);
+    shxOff+=8; shpOff+=8+CONTENT;
+  });
+  return {shp:new Uint8Array(shpBuf),shx:new Uint8Array(shxBuf)};
+}
+
+function buildDBF(pts){
+  const fields=[
+    {name:'ID',type:'N',len:8,dec:0},
+    {name:'NAME',type:'C',len:60,dec:0},
+    {name:'PHOTO',type:'C',len:100,dec:0},
+    {name:'LATITUDE',type:'F',len:18,dec:8},
+    {name:'LONGITUD',type:'F',len:18,dec:8},
+    {name:'ALTITUDE',type:'F',len:12,dec:3},
+  ];
+  const headerLen=32+fields.length*32+1;
+  const recordLen=1+fields.reduce((a,f)=>a+f.len,0);
+  const n=pts.length;
+  const total=headerLen+recordLen*n+1;
+  const buf=new Uint8Array(total);
+  const dv=new DataView(buf.buffer);
+  const now=new Date();
+  buf[0]=0x03; buf[1]=Math.max(0,now.getFullYear()-1900); buf[2]=now.getMonth()+1; buf[3]=now.getDate();
+  dv.setUint32(4,n,true);
+  dv.setUint16(8,headerLen,true);
+  dv.setUint16(10,recordLen,true);
+  const enc=new TextEncoder();
+  let off=32;
+  fields.forEach(f=>{
+    buf.set(enc.encode(f.name.slice(0,10)),off);
+    buf[off+11]=f.type.charCodeAt(0);
+    buf[off+16]=f.len;
+    buf[off+17]=f.dec;
+    off+=32;
+  });
+  buf[off]=0x0D; off+=1; // terminateur de champs
+
+  function writeText(str,len,o){
+    for(let i=0;i<len;i++)buf[o+i]=0x20;
+    buf.set(enc.encode(str).slice(0,len),o);
+  }
+  function writeNum(str,len,o){
+    const s=str.length>len?str.slice(0,len):str;
+    const pad=len-s.length;
+    for(let i=0;i<pad;i++)buf[o+i]=0x20;
+    enc.encode(s).forEach((b,i)=>{buf[o+pad+i]=b;});
+  }
+  pts.forEach((p,i)=>{
+    const ro=off+i*recordLen;
+    buf[ro]=0x20;
+    let fo=ro+1;
+    writeNum(String(i+1),fields[0].len,fo); fo+=fields[0].len;
+    writeText(p.name.slice(0,fields[1].len),fields[1].len,fo); fo+=fields[1].len;
+    writeText(('photos/'+p.photoFile).slice(0,fields[2].len),fields[2].len,fo); fo+=fields[2].len;
+    writeNum(p.lat.toFixed(8),fields[3].len,fo); fo+=fields[3].len;
+    writeNum(p.lon.toFixed(8),fields[4].len,fo); fo+=fields[4].len;
+    writeNum((p.alt||0).toFixed(3),fields[5].len,fo); fo+=fields[5].len;
+  });
+  buf[total-1]=0x1A;
+  return buf;
+}
+
+function buildPRJ(){
+  return 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]';
+}
+
+function buildQGSProject(pts){
+  let xn=Infinity,yn=Infinity,xx=-Infinity,yx=-Infinity;
+  pts.forEach(p=>{if(p.lon<xn)xn=p.lon;if(p.lon>xx)xx=p.lon;if(p.lat<yn)yn=p.lat;if(p.lat>yx)yx=p.lat;});
+  const pad=0.005;xn-=pad;yn-=pad;xx+=pad;yx+=pad;
+  const layerId='photos_'+Date.now();
+  const wmtsId='ortho_ign_'+Date.now();
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<qgis projectname="Photos geolocalisees" version="3.40.5-Bratislava">
+  <homePath path=""/>
+  <title>Photos géolocalisées</title>
+  <transaction mode="Disabled"/>
+  <projectCrs>
+    <spatialrefsys nativeFormat="Wkt">
+      <wkt>PROJCRS["WGS 84 / Pseudo-Mercator",BASEGEOGCRS["WGS 84",ENSEMBLE["World Geodetic System 1984 ensemble",MEMBER["World Geodetic System 1984 (Transit)"],MEMBER["World Geodetic System 1984 (G730)"],MEMBER["World Geodetic System 1984 (G873)"],MEMBER["World Geodetic System 1984 (G1150)"],MEMBER["World Geodetic System 1984 (G1674)"],MEMBER["World Geodetic System 1984 (G1762)"],MEMBER["World Geodetic System 1984 (G2139)"],ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]],ID["EPSG",4326]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8901]]],CONVERSION["Popular Visualisation Pseudo-Mercator",METHOD["Popular Visualisation Pseudo Mercator",ID["EPSG",1024]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8801]],PARAMETER["Longitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8802]],PARAMETER["False easting",0,LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",0,LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["easting (X)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["northing (Y)",north,ORDER[2],LENGTHUNIT["metre",1]],USAGE[SCOPE["Web mapping and visualisation."],AREA["World between 85.06 S and 85.06 N."],BBOX[-85.06,-180,85.06,180]],ID["EPSG",3857]]</wkt>
+      <proj4>+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs</proj4>
+      <srsid>3857</srsid>
+      <srid>3857</srid>
+      <authid>EPSG:3857</authid>
+      <description>WGS 84 / Pseudo-Mercator</description>
+      <projectionacronym>merc</projectionacronym>
+      <ellipsoidacronym>EPSG:7030</ellipsoidacronym>
+      <geographicflag>false</geographicflag>
+    </spatialrefsys>
+  </projectCrs>
+  <layer-tree-group>
+    <customproperties>
+      <Option/>
+    </customproperties>
+    <layer-tree-layer id="${layerId}" name="Photos" source="./photos.geojson" providerKey="ogr" checked="Qt::Checked" expanded="1">
+      <customproperties>
+        <Option/>
+      </customproperties>
+    </layer-tree-layer>
+    <layer-tree-layer id="${wmtsId}" name="Orthophotos IGN 2024" source="crs=EPSG:3857&amp;dpiMode=7&amp;featureCount=10&amp;format=image/jpeg&amp;layers=ORTHOIMAGERY.ORTHOPHOTOS2024&amp;styles=normal&amp;tileMatrixSet=PM_6_19&amp;tilePixelRatio=0&amp;url=https://data.geopf.fr/wmts-open/wmts?SERVICE%3DWMTS%26VERSION%3D1.0.0%26REQUEST%3DGetCapabilities" providerKey="wms" checked="Qt::Checked" expanded="0">
+      <customproperties>
+        <Option/>
+      </customproperties>
+    </layer-tree-layer>
+    <custom-order enabled="0">
+      <item>${layerId}</item>
+      <item>${wmtsId}</item>
+    </custom-order>
+  </layer-tree-group>
+  <mapcanvas name="theMapCanvas" annotationsVisible="1">
+    <units>meters</units>
+    <extent>
+      <xmin>${xn}</xmin><ymin>${yn}</ymin><xmax>${xx}</xmax><ymax>${yx}</ymax>
+    </extent>
+    <rotation>0</rotation>
+    <destinationsrs>
+      <spatialrefsys nativeFormat="Wkt">
+        <wkt>PROJCRS["WGS 84 / Pseudo-Mercator",BASEGEOGCRS["WGS 84",ENSEMBLE["World Geodetic System 1984 ensemble",MEMBER["World Geodetic System 1984 (Transit)"],MEMBER["World Geodetic System 1984 (G730)"],MEMBER["World Geodetic System 1984 (G873)"],MEMBER["World Geodetic System 1984 (G1150)"],MEMBER["World Geodetic System 1984 (G1674)"],MEMBER["World Geodetic System 1984 (G1762)"],MEMBER["World Geodetic System 1984 (G2139)"],ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]],ID["EPSG",4326]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8901]]],CONVERSION["Popular Visualisation Pseudo-Mercator",METHOD["Popular Visualisation Pseudo Mercator",ID["EPSG",1024]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8801]],PARAMETER["Longitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8802]],PARAMETER["False easting",0,LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",0,LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["easting (X)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["northing (Y)",north,ORDER[2],LENGTHUNIT["metre",1]],USAGE[SCOPE["Web mapping and visualisation."],AREA["World between 85.06 S and 85.06 N."],BBOX[-85.06,-180,85.06,180]],ID["EPSG",3857]]</wkt>
+        <proj4>+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs</proj4>
+        <srsid>3857</srsid>
+        <srid>3857</srid>
+        <authid>EPSG:3857</authid>
+        <description>WGS 84 / Pseudo-Mercator</description>
+        <projectionacronym>merc</projectionacronym>
+        <ellipsoidacronym>EPSG:7030</ellipsoidacronym>
+        <geographicflag>false</geographicflag>
+      </spatialrefsys>
+    </destinationsrs>
+  </mapcanvas>
+  <projectlayers>
+    <maplayer simplifyDrawingHints="0" geometry="Point" maxScale="0" refreshOnNotifyEnabled="0" type="vector" hasScaleBasedVisibilityFlag="0" minScale="100000000" id="${layerId}" autoRefreshEnabled="0" wkbType="Point" styleCategories="AllStyleCategories">
+      <extent>
+        <xmin>${xn}</xmin><ymin>${yn}</ymin><xmax>${xx}</xmax><ymax>${yx}</ymax>
+      </extent>
+      <id>${layerId}</id>
+      <datasource>./photos.geojson</datasource>
+      <layername>Photos</layername>
+      <srs>
+        <spatialrefsys nativeFormat="Wkt">
+          <wkt>GEOGCRS["WGS 84",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],CS[ellipsoidal,2],AXIS["geodetic latitude (Lat)",north,ORDER[1],ANGLEUNIT["degree",0.0174532925199433]],AXIS["geodetic longitude (Lon)",east,ORDER[2],ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",4326]]</wkt>
+          <proj4>+proj=longlat +datum=WGS84 +no_defs</proj4>
+          <srsid>3452</srsid>
+          <srid>4326</srid>
+          <authid>EPSG:4326</authid>
+        </spatialrefsys>
+      </srs>
+      <provider encoding="UTF-8">ogr</provider>
+      <map-tip-template>&lt;div style="font-family:sans-serif;text-align:center;max-width:420px;padding:8px"&gt;
+&lt;img src="file:///[% @project_home %]/[% &amp;quot;photo&amp;quot; %]" style="max-width:400px;max-height:350px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.3)"&gt;
+&lt;div style="margin-top:8px;font-size:14px;font-weight:bold;color:#222"&gt;[% &amp;quot;name&amp;quot; %]&lt;/div&gt;
+&lt;div style="margin-top:4px;font-size:11px;color:#666"&gt;
+📍 [% round(&amp;quot;latitude&amp;quot;,6) %], [% round(&amp;quot;longitude&amp;quot;,6) %]
+[% if(&amp;quot;altitude&amp;quot; &gt; 0, ' — 🏔 ' || round(&amp;quot;altitude&amp;quot;,1) || ' m', '') %]
+&lt;/div&gt;
+&lt;/div&gt;</map-tip-template>
+      <mapTipEnabled>1</mapTipEnabled>
+      <displayfield>name</displayfield>
+      <renderer-v2 type="singleSymbol" symbollevels="0" enableorderby="0" forceraster="0">
+        <symbols>
+          <symbol type="marker" name="0" alpha="1" clip_to_extent="1" force_rhr="0">
+            <data_defined_properties>
+              <Option type="Map"><Option type="QString" value="" name="name"/></Option>
+            </data_defined_properties>
+            <layer pass="0" enabled="1" class="SimpleMarker" locked="0">
+              <Option type="Map">
+                <Option type="QString" value="0" name="angle"/>
+                <Option type="QString" value="square" name="cap_style"/>
+                <Option type="QString" value="41,182,246,255" name="color"/>
+                <Option type="QString" value="1" name="horizontal_anchor_point"/>
+                <Option type="QString" value="bevel" name="joinstyle"/>
+                <Option type="QString" value="circle" name="name"/>
+                <Option type="QString" value="0,0" name="offset"/>
+                <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+                <Option type="QString" value="MM" name="offset_unit"/>
+                <Option type="QString" value="35,35,35,255" name="outline_color"/>
+                <Option type="QString" value="solid" name="outline_style"/>
+                <Option type="QString" value="0.4" name="outline_width"/>
+                <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+                <Option type="QString" value="MM" name="outline_width_unit"/>
+                <Option type="QString" value="diameter" name="scale_method"/>
+                <Option type="QString" value="3.4" name="size"/>
+                <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+                <Option type="QString" value="MM" name="size_unit"/>
+                <Option type="QString" value="1" name="vertical_anchor_point"/>
+              </Option>
+              <data_defined_properties>
+                <Option type="Map"><Option type="QString" value="" name="name"/></Option>
+              </data_defined_properties>
+            </layer>
+          </symbol>
+        </symbols>
+      </renderer-v2>
+      <labeling type="simple">
+        <settings calloutType="simple">
+          <text-style fieldName="name" fontSize="9" fontFamily="Sans Serif" fontWeight="50" fontItalic="0" textColor="50,50,50,255" previewBkgrdColor="255,255,255,255" allowHtml="0">
+            <text-buffer bufferDraw="1" bufferSize="1" bufferColor="255,255,255,200"/>
+          </text-style>
+          <placement dist="2" distUnits="MM" placement="0" priority="5"/>
+        </settings>
+      </labeling>
+      <customproperties>
+        <Option/>
+      </customproperties>
+      <fieldConfiguration>
+        <field name="name" configurationFlags="NoFlag"><editWidget type="TextEdit"/></field>
+        <field name="photo" configurationFlags="NoFlag">
+          <editWidget type="ExternalResource">
+            <config>
+              <Option type="Map">
+                <Option type="int" value="1" name="DocumentViewer"/>
+                <Option type="int" value="400" name="DocumentViewerHeight"/>
+                <Option type="int" value="400" name="DocumentViewerWidth"/>
+                <Option type="int" value="0" name="FileWidget"/>
+                <Option type="bool" value="true" name="UseLink"/>
+                <Option type="int" value="0" name="StorageType"/>
+                <Option type="int" value="0" name="StorageMode"/>
+                <Option type="int" value="1" name="RelativeStorage"/>
+                <Option type="QString" value="" name="DefaultRoot"/>
+              </Option>
+            </config>
+          </editWidget>
+        </field>
+        <field name="latitude" configurationFlags="NoFlag"><editWidget type="TextEdit"/></field>
+        <field name="longitude" configurationFlags="NoFlag"><editWidget type="TextEdit"/></field>
+        <field name="altitude" configurationFlags="NoFlag"><editWidget type="TextEdit"/></field>
+      </fieldConfiguration>
+    </maplayer>
+    <maplayer type="raster" maxScale="0" minScale="100000000" id="${wmtsId}" hasScaleBasedVisibilityFlag="0" autoRefreshEnabled="0" refreshOnNotifyEnabled="0" styleCategories="AllStyleCategories">
+      <id>${wmtsId}</id>
+      <datasource>crs=EPSG:3857&amp;dpiMode=7&amp;featureCount=10&amp;format=image/jpeg&amp;layers=ORTHOIMAGERY.ORTHOPHOTOS2024&amp;styles=normal&amp;tileMatrixSet=PM_6_19&amp;tilePixelRatio=0&amp;url=https://data.geopf.fr/wmts-open/wmts?SERVICE%3DWMTS%26VERSION%3D1.0.0%26REQUEST%3DGetCapabilities</datasource>
+      <layername>Orthophotos IGN 2024</layername>
+      <srs>
+        <spatialrefsys nativeFormat="Wkt">
+          <wkt>PROJCRS["WGS 84 / Pseudo-Mercator",BASEGEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]]],CONVERSION["Popular Visualisation Pseudo-Mercator",METHOD["Popular Visualisation Pseudo Mercator",ID["EPSG",1024]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["Longitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["False easting",0,LENGTHUNIT["metre",1]],PARAMETER["False northing",0,LENGTHUNIT["metre",1]]],CS[Cartesian,2],AXIS["easting (X)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["northing (Y)",north,ORDER[2],LENGTHUNIT["metre",1]],ID["EPSG",3857]]</wkt>
+          <proj4>+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs</proj4>
+          <srsid>3857</srsid>
+          <srid>3857</srid>
+          <authid>EPSG:3857</authid>
+        </spatialrefsys>
+      </srs>
+      <provider encoding="">wms</provider>
+      <customproperties>
+        <Option/>
+      </customproperties>
+    </maplayer>
+  </projectlayers>
+  <properties>
+    <Digitizing><DefaultSnapTolerance type="double">12</DefaultSnapTolerance></Digitizing>
+    <Gui><CanvasColorBluePart type="int">255</CanvasColorBluePart><CanvasColorGreenPart type="int">255</CanvasColorGreenPart><CanvasColorRedPart type="int">255</CanvasColorRedPart></Gui>
+    <Legend><filterByMap type="bool">false</filterByMap></Legend>
+    <Paths><Absolute type="bool">false</Absolute></Paths>
+    <SpatialRefSys>
+      <ProjectionsEnabled type="int">1</ProjectionsEnabled>
+      <ProjectCrs type="QString">EPSG:3857</ProjectCrs>
+      <ProjectCRSID type="int">3857</ProjectCRSID>
+      <ProjectCRSProj4String type="QString">+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs</ProjectCRSProj4String>
+    </SpatialRefSys>
+    <Measurement><AreaUnits type="QString">m2</AreaUnits><DistanceUnits type="QString">meters</DistanceUnits></Measurement>
+  </properties>
+  <visibility-presets/>
+  <mapViewDocks/>
+</qgis>`;
+}
+
+// ========== COMPRESS UTIL ==========
+// Note orientation : on ne fait AUCUNE rotation manuelle ici. Tous les navigateurs
+// modernes (Chrome/Firefox/Safari/Edge) appliquent nativement la rotation EXIF au
+// décodage d'une <img>/Image() — le pixel déjà lu par drawImage() est donc déjà dans
+// le bon sens. Appliquer une rotation manuelle en plus provoquerait une double
+// rotation et déformerait l'image. Le canvas de sortie n'ayant plus d'EXIF, la photo
+// compressée reste correctement orientée partout (y compris dans QGIS).
+function compressImg(file,q,maxDim){
+  maxDim=maxDim||4096;
+  return new Promise((res,rej)=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      let{width:w,height:h}=img;
+      if(w>maxDim||h>maxDim){const r=Math.min(maxDim/w,maxDim/h);w=Math.round(w*r);h=Math.round(h*r);}
+      const c=document.createElement('canvas');
+      c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      c.toBlob(bl=>{URL.revokeObjectURL(url);bl?res({blob:bl,preview:URL.createObjectURL(bl)}):rej('err');},'image/jpeg',q);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);rej('err');};
+    img.src=url;
+  });
+}
+function fmtSize(b){if(b<1024)return b+' o';if(b<1048576)return(b/1024).toFixed(1)+' Ko';return(b/1048576).toFixed(2)+' Mo';}
+
+// ========== APP ==========
+(function(){
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+
+// --- Tabs ---
+$$('.tab').forEach(t=>t.addEventListener('click',()=>{$$('.tab').forEach(x=>x.classList.remove('active'));$$('.tab-content').forEach(x=>x.classList.remove('active'));t.classList.add('active');$('#tab-'+t.dataset.tab).classList.add('active');if(t.dataset.tab==='gis'&&leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);}));
+
+// ============================
+// TAB 1: QUICK COMPRESS
+// ============================
+let qQ=0.6,qFiles=[],qId=0;
+$('#qPresets').querySelectorAll('.preset-btn').forEach(b=>{b.addEventListener('click',()=>{$('#qPresets').querySelectorAll('.preset-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');if(b.dataset.q==='custom'){$('#qSliderWrap').classList.remove('hidden');qQ=parseInt($('#qSlider').value)/100;}else{$('#qSliderWrap').classList.add('hidden');qQ=parseFloat(b.dataset.q);}});});
+$('#qSlider').addEventListener('input',e=>{$('#qSliderVal').textContent=e.target.value;qQ=parseInt(e.target.value)/100;});
+$('#qDropzone').addEventListener('click',()=>$('#qFileInput').click());
+$('#qDropzone').addEventListener('dragover',e=>{e.preventDefault();$('#qDropzone').classList.add('over');});
+$('#qDropzone').addEventListener('dragleave',()=>$('#qDropzone').classList.remove('over'));
+$('#qDropzone').addEventListener('drop',e=>{e.preventDefault();$('#qDropzone').classList.remove('over');if(e.dataTransfer.files.length)qProcess([...e.dataTransfer.files]);});
+$('#qFileInput').addEventListener('change',e=>{if(e.target.files.length)qProcess([...e.target.files]);e.target.value='';});
+$('#qBtnClear').addEventListener('click',()=>{qFiles.forEach(f=>URL.revokeObjectURL(f.preview));qFiles=[];qRender();});
+$('#qBtnDl').addEventListener('click',qDownload);
+
+async function qProcess(fl){
+  const imgs=fl.filter(isImageFile);
+  $('#qDropIcon').textContent='⏳';
+  const failed=[];
+  for(let i=0;i<imgs.length;i++){
+    const f=imgs[i];
+    $('#qLoadStatus').textContent='Traitement '+(i+1)+'/'+imgs.length+'…';
+    try{
+      const renderable=await toRenderable(f);
+      if(!renderable){failed.push(f.name);continue;}
+      const r=await compressImg(renderable,qQ);
+      qFiles.push({id:++qId,name:f.name,os:f.size,cs:r.blob.size,preview:r.preview,blob:r.blob});
+    }catch(e){failed.push(f.name);}
+  }
+  $('#qDropIcon').textContent='📸';
+  $('#qLoadStatus').textContent='';
+  if(failed.length)alert('⚠ '+failed.length+' photo(s) n\'ont pas pu être traitées :\n'+failed.join(', '));
+  qRender();
+}
+async function qDownload(){
+  if(qFiles.length===1){const f=qFiles[0],a=document.createElement('a');a.href=URL.createObjectURL(f.blob);a.download=sanitizeFilename(f.name.replace(/\.[^.]+$/,''))+'_compressed.jpg';a.click();return;}
+  const b=$('#qBtnDl');b.textContent='⏳ ZIP…';b.disabled=true;
+  try{
+    const z=new JSZip();const used=new Set();
+    qFiles.forEach(f=>{const base=uniqueName(sanitizeFilename(f.name.replace(/\.[^.]+$/,''))+'_compressed',used);z.file(base+'.jpg',f.blob);});
+    const c=await z.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(c);a.download='photos_compressed.zip';a.click();
+  }catch(e){alert('Erreur : '+e.message);}
+  b.textContent='↓ Télécharger (.zip)';b.disabled=false;
+}
+function qRender(){
+  const s=$('#qStats'),g=$('#qGrid');
+  if(!qFiles.length){s.classList.remove('visible');g.innerHTML='';return;}
+  s.classList.add('visible');
+  const to=qFiles.reduce((a,f)=>a+f.os,0),tc=qFiles.reduce((a,f)=>a+f.cs,0),sv=to-tc;
+  $('#qStatsCount').textContent=qFiles.length+' photo'+(qFiles.length>1?'s':'')+' • Économie';
+  $('#qStatsSaved').innerHTML=fmtSize(sv)+'<span>('+(to>0?((sv/to)*100).toFixed(0):0)+'%)</span>';
+  g.innerHTML='';
+  const frag=document.createDocumentFragment();
+  qFiles.forEach(f=>{
+    const sv2=f.os-f.cs,pc=f.os>0?((sv2/f.os)*100).toFixed(0):0;
+    const cd=document.createElement('div');cd.className='qc-card';
+    cd.innerHTML='<div class="qc-card-img"><img src="'+f.preview+'"><button class="qc-remove" data-id="'+f.id+'">×</button><div class="qc-badge '+(sv2>0?'':'same')+'">'+(sv2>0?'−'+pc+'%':'≈')+'</div></div><div class="qc-body"><div class="qc-name">'+f.name+'</div><div class="qc-sizes"><span>'+fmtSize(f.os)+'</span><span class="arrow">→</span><span class="after">'+fmtSize(f.cs)+'</span></div></div>';
+    cd.querySelector('.qc-remove').addEventListener('click',()=>{URL.revokeObjectURL(f.preview);qFiles=qFiles.filter(x=>x.id!==f.id);qRender();});
+    frag.appendChild(cd);
+  });
+  g.appendChild(frag);
+}
+
+// ============================
+// TAB 2: QGIS WIZARD
+// ============================
+let gisAll=[], gisSelected=[], gisQ=0.6, currentStep=0, leafletMap=null, markers={}, placingId=null;
+let selSearch='', selSort='name-asc';
+
+// -- Folder import --
+$('#gisDropzone').addEventListener('click',()=>$('#folderInput').click());
+$('#gisDropzone').addEventListener('dragover',e=>{e.preventDefault();$('#gisDropzone').classList.add('over');});
+$('#gisDropzone').addEventListener('dragleave',()=>$('#gisDropzone').classList.remove('over'));
+$('#gisDropzone').addEventListener('drop',e=>{e.preventDefault();$('#gisDropzone').classList.remove('over');if(e.dataTransfer.files.length)loadFolder([...e.dataTransfer.files]);});
+$('#folderInput').addEventListener('change',e=>{if(e.target.files.length)loadFolder([...e.target.files]);});
+
+async function loadFolder(fl){
+  // Libère les aperçus (object URLs) du précédent import pour éviter les fuites mémoire
+  gisAll.forEach(p=>{if(p.preview)URL.revokeObjectURL(p.preview);});
+  gisAll=[];
+  const imgs=fl.filter(isImageFile);
+  $('#gisIcon').textContent='⏳';
+  let idx=0;const failed=[];
+  for(let i=0;i<imgs.length;i++){
+    const f=imgs[i];
+    $('#gisLoadStatus').textContent='Analyse EXIF + aperçus… '+(i+1)+'/'+imgs.length;
+    const meta=await readMeta(f);
+    const renderable=await toRenderable(f);
+    if(!renderable){failed.push(f.name);continue;}
+    let preview;
+    try{ preview=(await compressImg(renderable,0.7,480)).preview; }
+    catch(e){failed.push(f.name);continue;}
+    gisAll.push({
+      id:++idx,name:f.name,displayName:f.name.replace(/\.[^.]+$/,''),ext:'.jpg',
+      file:f,sourceBlob:renderable,
+      preview,selected:true,lat:meta.lat,lon:meta.lon,alt:meta.alt,hasGps:meta.lat!==null,
+      takenAt:meta.takenAt,blob:null,compSize:0
+    });
+  }
+  $('#gisIcon').textContent='📂';
+  $('#gisLoadStatus').textContent='';
+  if(failed.length)alert('⚠ '+failed.length+' photo(s) n\'ont pas pu être décodées (format non supporté) :\n'+failed.join(', '));
+  selSearch='';$('#selSearch').value='';selSort='name-asc';$('#selSort').value='name-asc';
+  buildSelectGrid();
+}
+
+// -- Step 0: Select / recherche / tri --
+$('#selAll').addEventListener('click',()=>{getFilteredSortedAll().forEach(p=>p.selected=true);syncSelectUI();});
+$('#selNone').addEventListener('click',()=>{getFilteredSortedAll().forEach(p=>p.selected=false);syncSelectUI();});
+
+let searchDebounce=null;
+$('#selSearch').addEventListener('input',e=>{
+  clearTimeout(searchDebounce);
+  const v=e.target.value;
+  searchDebounce=setTimeout(()=>{selSearch=v;buildSelectGrid();},150);
+});
+$('#selSort').addEventListener('change',e=>{selSort=e.target.value;buildSelectGrid();});
+
+function getFilteredSortedAll(){
+  let list=gisAll.slice();
+  if(selSearch.trim()){const q=selSearch.trim().toLowerCase();list=list.filter(p=>p.name.toLowerCase().includes(q));}
+  const coll=(typeof Intl!=='undefined'&&Intl.Collator)?new Intl.Collator('fr',{numeric:true,sensitivity:'base'}):null;
+  const cmp=(a,b)=>coll?coll.compare(a,b):a.localeCompare(b);
+  switch(selSort){
+    case 'name-asc': list.sort((a,b)=>cmp(a.name,b.name)); break;
+    case 'name-desc': list.sort((a,b)=>cmp(b.name,a.name)); break;
+    case 'date-desc': list.sort((a,b)=>(b.takenAt?b.takenAt.getTime():0)-(a.takenAt?a.takenAt.getTime():0)); break;
+    case 'date-asc': list.sort((a,b)=>(a.takenAt?a.takenAt.getTime():0)-(b.takenAt?b.takenAt.getTime():0)); break;
+    case 'gps-first': list.sort((a,b)=>(b.hasGps?1:0)-(a.hasGps?1:0)); break;
+    case 'nogps-first': list.sort((a,b)=>(a.hasGps?1:0)-(b.hasGps?1:0)); break;
+  }
+  return list;
+}
+
+const selCards={};
+
+function buildSelectGrid(){
+  const g=$('#selectGrid'),c=$('#selectControls'),tb=$('#selectToolbar');
+  g.innerHTML='';
+  Object.keys(selCards).forEach(k=>delete selCards[k]);
+  if(!gisAll.length){c.classList.add('hidden');tb.classList.add('hidden');return;}
+  c.classList.remove('hidden');tb.classList.remove('hidden');
+  const view=getFilteredSortedAll();
+  if(!view.length){
+    const d=document.createElement('div');d.className='select-empty';d.textContent='Aucune photo ne correspond à la recherche.';
+    g.appendChild(d);
+  }else{
+    const frag=document.createDocumentFragment();
+    view.forEach(p=>{
+      const d=document.createElement('div');d.className='sel-card'+(p.selected?' selected':'');
+      d.innerHTML='<img src="'+p.preview+'" loading="lazy"><div class="sel-check">✓</div><div class="sel-name">'+p.name+'</div><div class="sel-gps">'+(p.hasGps?'📍':'')+'</div>';
+      d.addEventListener('click',()=>{
+        p.selected=!p.selected;
+        d.classList.toggle('selected',p.selected);
+        updateSelCount();
+        updateNav();
+      });
+      selCards[p.id]=d;
+      frag.appendChild(d);
+    });
+    g.appendChild(frag);
+  }
+  updateSelCount();
+  updateNav();
+}
+
+function syncSelectUI(){
+  gisAll.forEach(p=>{if(selCards[p.id])selCards[p.id].classList.toggle('selected',p.selected);});
+  updateSelCount();
+  updateNav();
+}
+
+function updateSelCount(){
+  const cnt=gisAll.filter(p=>p.selected).length;
+  const view=getFilteredSortedAll();
+  let txt=cnt+'/'+gisAll.length+' sélectionnée'+(cnt>1?'s':'');
+  if(view.length!==gisAll.length)txt+=' • '+view.length+' affichée'+(view.length>1?'s':'');
+  $('#selCount').textContent=txt;
+}
+
+// -- Step 1: Rename --
+function renderRename(){
+  gisSelected=gisAll.filter(p=>p.selected);
+  const list=$('#renameList');list.innerHTML='';
+  gisSelected.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='rename-row';d.style.animationDelay=(i*30)+'ms';
+    d.innerHTML='<img src="'+p.preview+'"><input type="text" value="'+p.displayName.replace(/"/g,'&quot;')+'" data-id="'+p.id+'"><span class="rename-ext">'+p.ext+'</span>';
+    d.querySelector('input').addEventListener('input',e=>{p.displayName=e.target.value;checkDuplicateNames();});
+    list.appendChild(d);
+  });
+  checkDuplicateNames();
+}
+function checkDuplicateNames(){
+  const seen=new Map();
+  gisSelected.forEach(p=>{
+    const key=sanitizeFilename(p.displayName).toLowerCase();
+    seen.set(key,(seen.get(key)||0)+1);
+  });
+  const dupCount=[...seen.values()].filter(v=>v>1).length;
+  const w=$('#dupWarning');
+  if(dupCount>0){
+    w.classList.remove('hidden');
+    w.textContent='⚠ '+dupCount+' nom(s) en double : ils seront automatiquement suffixés (_2, _3…) au moment de l\'export.';
+  }else w.classList.add('hidden');
+}
+
+$('#bulkApply').addEventListener('click',()=>{
+  const pattern=$('#bulkPattern').value.trim()||'Photo-{n}';
+  let start=parseInt($('#bulkStart').value,10); if(isNaN(start))start=1;
+  const padSel=$('#bulkPad').value;
+  const total=gisSelected.length;
+  const pad=padSel==='auto'?String(start+total-1).length:parseInt(padSel,10);
+  gisSelected.forEach((p,i)=>{
+    const num=String(start+i).padStart(pad,'0');
+    const orig=p.name.replace(/\.[^.]+$/,'');
+    p.displayName=pattern.replace(/\{n\}/g,num).replace(/\{orig\}/g,orig);
+  });
+  renderRename();
+});
+$('#bulkReset').addEventListener('click',()=>{
+  gisSelected.forEach(p=>{p.displayName=p.name.replace(/\.[^.]+$/,'');});
+  renderRename();
+});
+
+// -- Step 2: Compress --
+$('#gPresets').querySelectorAll('.preset-btn').forEach(b=>{b.addEventListener('click',()=>{$('#gPresets').querySelectorAll('.preset-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');gisQ=parseFloat(b.dataset.q);});});
+$('#compStart').addEventListener('click',runCompress);
+
+async function runCompress(){
+  const btn=$('#compStart'),bar=$('#compBar'),lbl=$('#compLabel'),res=$('#compResults');
+  btn.disabled=true;btn.textContent='Compression…';res.classList.remove('hidden');res.innerHTML='';
+  for(let i=0;i<gisSelected.length;i++){
+    lbl.textContent='Compression '+(i+1)+'/'+gisSelected.length+'…';
+    bar.style.width=((i+1)/gisSelected.length*100)+'%';
+    const p=gisSelected[i];
+    try{const r=await compressImg(p.sourceBlob,gisQ);p.blob=r.blob;p.compSize=r.blob.size;}
+    catch(e){p.blob=p.file;p.compSize=p.file.size;}
+    const row=document.createElement('div');row.className='comp-row';
+    const sv=p.file.size-p.compSize,pc=p.file.size>0?((sv/p.file.size)*100).toFixed(0):0;
+    row.innerHTML='<img src="'+p.preview+'"><span class="name">'+p.displayName+p.ext+'</span><span class="sizes">'+fmtSize(p.file.size)+' → '+fmtSize(p.compSize)+'</span><span class="pct">'+(sv>=0?'−'+pc:'+'+Math.abs(pc))+'%</span>';
+    res.appendChild(row);
+  }
+  lbl.textContent='✓ Compression terminée';btn.textContent='✓ Terminé';updateNav();
+}
+
+// -- Step 3: Locate (Map) --
+function initMap(){
+  if(leafletMap)return;
+  leafletMap=L.map('locateMap').setView([46.5,2.5],6);
+  const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19});
+  const satellite=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri, Maxar, Earthstar',maxZoom:19});
+  const hybrid=L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19}),
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,opacity:0.35})
+  ]);
+  osm.addTo(leafletMap);
+  L.control.layers({'🗺 Plan OSM':osm,'🛰 Satellite':satellite,'🛰+🗺 Hybride':hybrid},{},
+    {position:'topright',collapsed:false}).addTo(leafletMap);
+  leafletMap.on('click',onMapClick);
+}
+
+function showPreview(p){
+  const panel=$('#photoPreview'),img=$('#previewImg'),name=$('#previewName'),hint=$('#previewHint');
+  panel.classList.remove('hidden');
+  img.src=p.preview;
+  name.textContent=p.displayName;
+  hint.textContent='📌 Cliquez sur la carte pour positionner cette photo';
+}
+function hidePreview(){$('#photoPreview').classList.add('hidden');}
+
+function renderMap(){
+  initMap();
+  Object.values(markers).forEach(m=>leafletMap.removeLayer(m));
+  markers={};placingId=null;hidePreview();
+
+  const gpsPhotos=gisSelected.filter(p=>p.lat!==null&&p.lon!==null);
+
+  const listGps=$('#mapListGps');listGps.innerHTML='';
+  gpsPhotos.forEach(p=>{
+    const d=document.createElement('div');d.className='map-photo-item';
+    d.innerHTML='<img src="'+p.preview+'"><span class="mname">'+p.displayName+'</span><span class="mcoord">'+p.lat.toFixed(4)+', '+p.lon.toFixed(4)+'</span>';
+    d.addEventListener('click',()=>{leafletMap.setView([p.lat,p.lon],16);markers[p.id]&&markers[p.id].openPopup();});
+    listGps.appendChild(d);
+    const mk=L.marker([p.lat,p.lon],{draggable:true}).addTo(leafletMap);
+    mk.bindPopup('<img src="'+p.preview+'" style="width:180px;border-radius:6px"><br><b>'+p.displayName+'</b>');
+    mk.on('dragend',()=>{const ll=mk.getLatLng();p.lat=ll.lat;p.lon=ll.lng;renderMapLists();});
+    markers[p.id]=mk;
+  });
+
+  renderMapLists();
+
+  const allWithCoords=gisSelected.filter(p=>p.lat!==null&&p.lon!==null);
+  if(allWithCoords.length>1){const b=L.latLngBounds(allWithCoords.map(p=>[p.lat,p.lon]));leafletMap.fitBounds(b,{padding:[40,40]});}
+  else if(allWithCoords.length===1)leafletMap.setView([allWithCoords[0].lat,allWithCoords[0].lon],14);
+
+  setTimeout(()=>leafletMap.invalidateSize(),200);
+}
+
+function renderMapLists(){
+  const noGps=gisSelected.filter(p=>p.lat===null||p.lon===null);
+  const listNo=$('#mapListNoGps');listNo.innerHTML='';
+  const section=$('#mapNoGpsSection');
+
+  if(noGps.length===0){
+    section.classList.add('hidden');
+    $('#mapInstr').className='map-instructions all-done';
+    $('#mapInstr').textContent='✓ Toutes les photos sont localisées ! Glissez les marqueurs pour ajuster.';
+    hidePreview();
+  } else {
+    section.classList.remove('hidden');
+    $('#mapInstr').className='map-instructions';
+    $('#mapInstr').innerHTML='Cliquez sur une photo <strong>sans GPS</strong> ci-dessous, puis cliquez sur la carte pour la placer.';
+    noGps.forEach(p=>{
+      const d=document.createElement('div');d.className='map-photo-item'+(placingId===p.id?' active':'');
+      d.innerHTML='<img src="'+p.preview+'"><span class="mname">'+p.displayName+'</span><span style="color:var(--warn);font-size:11px">à placer</span>';
+      d.addEventListener('click',()=>{
+        placingId=p.id;
+        showPreview(p);
+        renderMapLists();
+        $('#mapInstr').innerHTML='📌 Cliquez sur la carte pour placer <strong>'+p.displayName+'</strong>';
+      });
+      listNo.appendChild(d);
+    });
+  }
+  updateNav();
+}
+
+function onMapClick(e){
+  if(!placingId)return;
+  const p=gisSelected.find(x=>x.id===placingId);
+  if(!p)return;
+  p.lat=e.latlng.lat;p.lon=e.latlng.lng;p.hasGps=true;
+  if(markers[p.id])leafletMap.removeLayer(markers[p.id]);
+  const mk=L.marker([p.lat,p.lon],{draggable:true}).addTo(leafletMap);
+  mk.bindPopup('<img src="'+p.preview+'" style="width:180px;border-radius:6px"><br><b>'+p.displayName+'</b>');
+  mk.on('dragend',()=>{const ll=mk.getLatLng();p.lat=ll.lat;p.lon=ll.lng;renderMapLists();});
+  markers[p.id]=mk;
+
+  const listGps=$('#mapListGps');
+  const d=document.createElement('div');d.className='map-photo-item';
+  d.innerHTML='<img src="'+p.preview+'"><span class="mname">'+p.displayName+'</span><span class="mcoord">'+p.lat.toFixed(4)+', '+p.lon.toFixed(4)+'</span>';
+  d.addEventListener('click',()=>{leafletMap.setView([p.lat,p.lon],16);markers[p.id]&&markers[p.id].openPopup();});
+  listGps.appendChild(d);
+
+  placingId=null;
+  hidePreview();
+  renderMapLists();
+}
+
+// -- Step 4: Export --
+function renderExport(){
+  const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null);
+  const noGeo=gisSelected.length-geo.length;
+  let html='<strong>'+geo.length+'</strong> photo'+(geo.length>1?'s':'')+' géolocalisée'+(geo.length>1?'s':'')+' prête'+(geo.length>1?'s':'')+' à exporter.';
+  if(noGeo>0) html+='<br><span style="color:var(--warn)">⚠ '+noGeo+' photo'+(noGeo>1?'s':'')+' sans localisation (non incluse'+(noGeo>1?'s':'')+')</span>';
+  html+='<br><br>Le ZIP contiendra : <strong>projet QGIS</strong> (.qgs) + <strong>GeoJSON</strong> + <strong>CSV</strong> + <strong>Shapefile réel</strong> (.shp/.shx/.dbf/.prj) + photos JPEG<br><span style="font-size:11px;color:var(--text4)">Double-cliquez sur le .qgs → tout est prêt dans QGIS (le Shapefile est fourni en plus, utilisable dans n\'importe quel logiciel SIG)</span>';
+  $('#exportSummary').innerHTML=html;
+}
+
+$('#btnExport').addEventListener('click',async()=>{
+  const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null&&p.blob);
+  if(!geo.length){alert('Aucune photo géolocalisée et compressée à exporter.');return;}
+  const btn=$('#btnExport'),st=$('#exportStatus');
+  btn.disabled=true;btn.textContent='⏳ Génération…';st.textContent='Création des fichiers SIG…';
+  try{
+    const used=new Set();
+    const pts=geo.map(p=>{
+      const safeBase=sanitizeFilename(p.displayName);
+      const uniq=uniqueName(safeBase,used);
+      return {name:p.displayName.trim()||uniq,lat:p.lat,lon:p.lon,alt:p.alt||0,photoFile:uniq+'.jpg'};
+    });
+    const zip=new JSZip(),phF=zip.folder('photos');
+    zip.file('photos.geojson',buildGeoJSON(pts));
+    zip.file('photos.csv',buildCSV(pts));
+    st.textContent='Création du Shapefile…';
+    const {shp,shx}=buildSHP_SHX(pts);
+    zip.file('photos.shp',shp);
+    zip.file('photos.shx',shx);
+    zip.file('photos.dbf',buildDBF(pts));
+    zip.file('photos.prj',buildPRJ());
+    zip.file('photos.cpg','UTF-8');
+    st.textContent='Création du projet QGIS…';
+    zip.file('projet_photos.qgs',buildQGSProject(pts));
+    st.textContent='Ajout des photos…';
+    geo.forEach((p,i)=>phF.file(pts[i].photoFile,p.blob));
+    zip.file('LISEZ-MOI.txt',
+      'EXPORT QGIS - Photos géolocalisées\n'
+      +'====================================\n\n'
+      +'METHODE RECOMMANDEE :\n'
+      +'  1. Dézippez ce dossier\n'
+      +'  2. Double-cliquez sur projet_photos.qgs\n'
+      +'  3. QGIS s\'ouvre avec tout configuré :\n'
+      +'     - Fond de carte : Orthophotos IGN 2024 (WMTS)\n'
+      +'     - Couche de points sur la carte (GeoJSON)\n'
+      +'     - Infobulles avec aperçu photo au survol\n'
+      +'     - Formulaire avec visionneuse photo au clic\n'
+      +'     - Étiquettes avec noms des photos\n\n'
+      +'  → Pour activer les infobulles : Vue > Sketcher d\'infobulles\n'
+      +'     ou cliquez l\'icône infobulle dans la barre d\'outils\n\n'
+      +'  → Le fond IGN nécessite une connexion internet.\n\n'
+      +'CONTENU DU ZIP :\n'
+      +'  projet_photos.qgs        →  Projet QGIS pré-configuré (v3.40)\n'
+      +'  photos.geojson           →  Couche de points WGS84 (EPSG:4326), utilisée par le .qgs\n'
+      +'  photos.csv               →  Table lat/lon\n'
+      +'  photos.shp/.shx/.dbf     →  Shapefile ESRI réel (points 3D), pour tout logiciel SIG\n'
+      +'  photos.prj / photos.cpg  →  Projection (WGS84) et encodage (UTF-8) du Shapefile\n'
+      +'  photos/                  →  Photos compressées (JPEG)\n\n'
+      +'IMPORTANT : gardez tous les fichiers dans le même dossier.\n'
+      +'Les chemins sont relatifs.\n\n'
+      +'Projection : WGS 84 (EPSG:4326) pour Shapefile/GeoJSON/CSV, projet QGIS en Pseudo-Mercator (EPSG:3857)\n'
+      +'Fond de carte : IGN Géoplateforme WMTS (data.geopf.fr)\n'
+      +'Photos : '+pts.length+' (format JPEG universel)\n');
+    st.textContent='Compression du ZIP…';
+    const c=await zip.generateAsync({type:'blob'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(c);a.download='export_qgis_photos.zip';a.click();
+    st.textContent='✓ Export terminé !';
+  }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
+  btn.disabled=false;btn.textContent='🌍 Générer et télécharger le ZIP';
+});
+
+// ============================
+// STEPPER NAVIGATION
+// ============================
+const totalSteps=5;
+function goToStep(s){
+  if(s<0||s>=totalSteps)return;
+  currentStep=s;
+  $$('.step-panel').forEach(p=>p.classList.remove('active'));
+  $('#step-'+s).classList.add('active');
+  $$('.step-dot').forEach((d,i)=>{d.classList.remove('active','done');if(i<s)d.classList.add('done');if(i===s)d.classList.add('active');});
+  $$('.step-label').forEach((l,i)=>{l.classList.remove('active','done');if(i<s)l.classList.add('done');if(i===s)l.classList.add('active');});
+  $$('.step-line').forEach((l,i)=>{l.classList.toggle('done',i<s);});
+  if(s===1)renderRename();
+  if(s===2){$('#compStart').disabled=false;$('#compStart').textContent='Lancer la compression';$('#compBar').style.width='0';$('#compLabel').textContent='Prêt à compresser';$('#compResults').classList.add('hidden');}
+  if(s===3){setTimeout(()=>{renderMap();},150);}
+  if(s===4)renderExport();
+  updateNav();
+}
+
+function updateNav(){
+  const prev=$('#prevBtn'),next=$('#nextBtn'),nav=$('#stepNav');
+  nav.style.display=gisAll.length?'flex':'none';
+  prev.style.visibility=currentStep>0?'visible':'hidden';
+  if(currentStep===0){
+    const cnt=gisAll.filter(p=>p.selected).length;
+    next.disabled=cnt===0;next.textContent=cnt>0?'Suivant ('+cnt+' photos) →':'Sélectionnez des photos';
+  }else if(currentStep===2){
+    const compressed=gisSelected.length>0&&gisSelected.every(p=>p.blob);
+    next.disabled=!compressed;next.textContent=compressed?'Suivant →':'Compressez d\'abord';
+  }else if(currentStep===4){
+    next.style.visibility='hidden';
+  }else{
+    next.disabled=false;next.textContent='Suivant →';next.style.visibility='visible';
+  }
+}
+
+$('#prevBtn').addEventListener('click',()=>goToStep(currentStep-1));
+$('#nextBtn').addEventListener('click',()=>goToStep(currentStep+1));
+
+// Init
+goToStep(0);
+$('#stepNav').style.display='none';
+
+})();
+</script>
+</body>
+</html>
