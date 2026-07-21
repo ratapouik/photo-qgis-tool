@@ -294,6 +294,10 @@
     <div class="hint">ou cliquez pour parcourir</div>
   </div>
   <input type="file" id="qFileInput" accept="image/*,.heic,.heif" multiple hidden>
+  <input type="file" id="qCameraInput" accept="image/*" capture="environment" hidden>
+  <div style="text-align:center;margin:12px 0 16px">
+    <button class="btn btn-sm btn-outline" id="qCameraBtn">📷 Prendre une photo</button>
+  </div>
   <div class="load-status-row">
     <div class="load-status" id="qLoadStatus" aria-live="polite"></div>
     <button class="btn btn-sm btn-outline hidden" id="qCancelBtn">Annuler</button>
@@ -302,6 +306,7 @@
     <div><div class="sub" id="qStatsCount"></div><div class="big" id="qStatsSaved"></div></div>
     <div class="qc-stats-actions">
       <button class="btn btn-outline" id="qBtnClear">Effacer</button>
+      <button class="btn btn-outline" id="qBtnEmail">📧 E-mail</button>
       <button class="btn btn-green" id="qBtnDl">↓ Télécharger (.zip)</button>
     </div>
   </div>
@@ -337,6 +342,10 @@
       <div class="hint">Toutes les images seront listées (JPEG, PNG, HEIC/HEIF…) — vous choisirez lesquelles garder</div>
     </div>
     <input type="file" id="folderInput" webkitdirectory multiple hidden>
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+    <div style="text-align:center;margin:-4px 0 16px">
+      <button class="btn btn-sm btn-outline" id="cameraBtn">📷 Prendre une photo</button>
+    </div>
     <div class="load-status-row">
       <div class="load-status" id="gisLoadStatus" aria-live="polite"></div>
       <button class="btn btn-sm btn-outline hidden" id="gisCancelBtn">Annuler</button>
@@ -433,8 +442,9 @@
   <!-- STEP 4: EXPORT -->
   <div class="step-panel" id="step-4">
     <div class="summary-box" style="background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent)" id="exportSummary"></div>
-    <div style="text-align:center;margin-top:20px">
+    <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="btn btn-blue" id="btnExport" style="font-size:15px;padding:14px 28px">🌍 Générer et télécharger le ZIP</button>
+      <button class="btn btn-outline" id="btnExportEmail" style="font-size:15px;padding:14px 28px">📧 Envoyer par e-mail</button>
     </div>
     <div class="export-bar-wrap hidden" id="exportBarWrap">
       <div class="compress-bar"><div class="compress-bar-fill" id="exportBar"></div></div>
@@ -870,6 +880,44 @@ $$('.tab').forEach(t=>t.addEventListener('click',()=>{$$('.tab').forEach(x=>{x.c
 
 // --- Utilitaires communs ---
 function escapeAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// Partage natif (ouvre le sélecteur de partage du système, qui inclut l'app
+// mail par défaut sur mobile) avec repli : téléchargement + mailto pré-rempli
+// si le partage de fichier n'est pas supporté (typiquement sur ordinateur).
+async function shareOrEmailFile(blob,filename,subject,body){
+  let file=null;
+  try{file=new File([blob],filename,{type:blob.type||'application/octet-stream'});}catch(e){}
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:subject,text:body});
+      return 'shared';
+    }catch(e){
+      if(e&&e.name==='AbortError')return 'cancelled';
+      // sinon on tente le repli mailto ci-dessous
+    }
+  }
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+  const mailBody=body+'\n\n(Le fichier "'+filename+'" vient d\'être téléchargé sur cet appareil : pensez à le joindre à cet e-mail.)';
+  window.location.href='mailto:?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(mailBody);
+  return 'fallback';
+}
+
+// Position GPS en direct (utilisée quand une photo prise à l'instant n'a pas
+// de coordonnées EXIF). Ne bloque jamais : résout avec null au bout de 8s
+// ou si la permission est refusée/l'appareil n'a pas de GPS.
+function getLiveGeolocation(timeout){
+  timeout=timeout||8000;
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){resolve(null);return;}
+    navigator.geolocation.getCurrentPosition(
+      pos=>resolve({lat:pos.coords.latitude,lon:pos.coords.longitude,alt:typeof pos.coords.altitude==='number'?pos.coords.altitude:null}),
+      ()=>resolve(null),
+      {enableHighAccuracy:true,timeout,maximumAge:0}
+    );
+  });
+}
+
 async function mapWithConcurrency(items,limit,fn){
   const results=new Array(items.length);
   let idx=0;
@@ -920,7 +968,10 @@ $('#qDropzone').addEventListener('drop',e=>{e.preventDefault();$('#qDropzone').c
 $('#qFileInput').addEventListener('change',e=>{if(e.target.files.length)qProcess([...e.target.files]);e.target.value='';});
 $('#qBtnClear').addEventListener('click',()=>{qFiles.forEach(f=>URL.revokeObjectURL(f.preview));qFiles=[];qRender();});
 $('#qBtnDl').addEventListener('click',qDownload);
+$('#qBtnEmail').addEventListener('click',qShareEmail);
 $('#qCancelBtn').addEventListener('click',()=>{qCancelled=true;});
+$('#qCameraBtn').addEventListener('click',()=>$('#qCameraInput').click());
+$('#qCameraInput').addEventListener('change',e=>{if(e.target.files.length)qProcess([...e.target.files]);e.target.value='';});
 
 async function qProcess(fl){
   const imgs=fl.filter(isImageFile);
@@ -959,6 +1010,25 @@ async function qDownload(){
   }catch(e){alert('Erreur : '+e.message);}
   b.textContent='↓ Télécharger (.zip)';b.disabled=false;
 }
+async function qShareEmail(){
+  if(!qFiles.length)return;
+  const btn=$('#qBtnEmail'),orig=btn.textContent;
+  btn.disabled=true;btn.textContent='⏳…';
+  try{
+    let blob,filename;
+    if(qFiles.length===1){
+      blob=qFiles[0].blob;
+      filename=sanitizeFilename(qFiles[0].name.replace(/\.[^.]+$/,''))+'_compressed.jpg';
+    }else{
+      const z=new JSZip();const used=new Set();
+      qFiles.forEach(f=>{const base=uniqueName(sanitizeFilename(f.name.replace(/\.[^.]+$/,''))+'_compressed',used);z.file(base+'.jpg',f.blob);});
+      blob=await z.generateAsync({type:'blob'});
+      filename='photos_compressed.zip';
+    }
+    await shareOrEmailFile(blob,filename,'Photos compressées','Voici les photos compressées.');
+  }catch(e){alert('Erreur : '+e.message);}
+  btn.disabled=false;btn.textContent=orig;
+}
 function qRender(){
   const s=$('#qStats'),g=$('#qGrid');
   if(!qFiles.length){s.classList.remove('visible');g.innerHTML='';return;}
@@ -993,6 +1063,44 @@ $('#gisDropzone').addEventListener('drop',e=>{e.preventDefault();$('#gisDropzone
 $('#folderInput').addEventListener('change',e=>{if(e.target.files.length)loadFolder([...e.target.files]);});
 $('#gisCancelBtn').addEventListener('click',()=>{gisCancelled=true;});
 $('#newProjectBtn').addEventListener('click',resetGisProject);
+$('#cameraBtn').addEventListener('click',()=>$('#cameraInput').click());
+$('#cameraInput').addEventListener('change',async e=>{
+  if(e.target.files.length)await addCameraPhoto(e.target.files[0]);
+  e.target.value='';
+});
+
+// Ajoute une photo prise à l'instant à la sélection en cours (sans réinitialiser
+// les photos déjà chargées, contrairement à loadFolder qui repart de zéro).
+async function addCameraPhoto(file){
+  $('#gisIcon').textContent='⏳';
+  $('#gisLoadStatus').textContent='Traitement de la photo…';
+  try{
+    const meta=await readMeta(file);
+    if(meta.lat===null){
+      $('#gisLoadStatus').textContent='Récupération de la position GPS…';
+      const geo=await getLiveGeolocation();
+      if(geo){meta.lat=geo.lat;meta.lon=geo.lon;meta.alt=geo.alt;}
+    }
+    const renderable=await toRenderable(file);
+    if(!renderable){alert('⚠ Cette photo n\'a pas pu être traitée.');return;}
+    let preview;
+    try{preview=(await compressImg(renderable,0.7,480)).preview;}
+    catch(e){alert('⚠ Cette photo n\'a pas pu être traitée.');return;}
+    const ts=new Date();
+    const label='Terrain-'+ts.toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const id=gisAll.reduce((m,p)=>Math.max(m,p.id),0)+1;
+    gisAll.push({
+      id,name:label+'.jpg',displayName:label,ext:'.jpg',
+      file,sourceBlob:renderable,
+      preview,selected:true,lat:meta.lat,lon:meta.lon,alt:meta.alt,hasGps:meta.lat!==null,
+      takenAt:ts,blob:null,compSize:0
+    });
+    buildSelectGrid();
+  }finally{
+    $('#gisIcon').textContent='📂';
+    $('#gisLoadStatus').textContent='';
+  }
+}
 
 function resetGisProject(){
   if(gisLoading)return;
@@ -1348,71 +1456,92 @@ function renderExport(){
   $('#exportSummary').innerHTML=html;
 }
 
-$('#btnExport').addEventListener('click',async()=>{
+// Construit le ZIP d'export complet (QGIS + GeoJSON + CSV + Shapefile + photos).
+// Partagé entre le bouton "Télécharger" et le bouton "Envoyer par e-mail".
+async function buildExportZip(setStatus,setProgress){
   const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null&&p.blob);
-  if(!geo.length){alert('Aucune photo géolocalisée et compressée à exporter.');return;}
+  if(!geo.length)throw new Error('Aucune photo géolocalisée et compressée à exporter.');
+  setStatus('Création des fichiers SIG…');
+  const used=new Set();
+  const pts=geo.map(p=>{
+    const safeBase=sanitizeFilename(p.displayName);
+    const uniq=uniqueName(safeBase,used);
+    return {name:p.displayName.trim()||uniq,lat:p.lat,lon:p.lon,alt:p.alt||0,photoFile:uniq+'.jpg'};
+  });
+  const zip=new JSZip(),phF=zip.folder('photos');
+  zip.file('photos.geojson',buildGeoJSON(pts));
+  zip.file('photos.csv',buildCSV(pts));
+  setStatus('Création du Shapefile…');
+  const {shp,shx}=buildSHP_SHX(pts);
+  zip.file('photos.shp',shp);
+  zip.file('photos.shx',shx);
+  zip.file('photos.dbf',buildDBF(pts));
+  zip.file('photos.prj',buildPRJ());
+  zip.file('photos.cpg','UTF-8');
+  setStatus('Création du projet QGIS…');
+  zip.file('projet_photos.qgs',buildQGSProject(pts));
+  setStatus('Ajout des photos…');
+  geo.forEach((p,i)=>phF.file(pts[i].photoFile,p.blob));
+  zip.file('LISEZ-MOI.txt',
+    'EXPORT QGIS - Photos géolocalisées\n'
+    +'====================================\n\n'
+    +'METHODE RECOMMANDEE :\n'
+    +'  1. Dézippez ce dossier\n'
+    +'  2. Double-cliquez sur projet_photos.qgs\n'
+    +'  3. QGIS s\'ouvre avec tout configuré :\n'
+    +'     - Fond de carte : Orthophotos IGN 2024 (WMTS)\n'
+    +'     - Couche de points sur la carte (GeoJSON)\n'
+    +'     - Infobulles avec aperçu photo au survol\n'
+    +'     - Formulaire avec visionneuse photo au clic\n'
+    +'     - Étiquettes avec noms des photos\n\n'
+    +'  → Pour activer les infobulles : Vue > Sketcher d\'infobulles\n'
+    +'     ou cliquez l\'icône infobulle dans la barre d\'outils\n\n'
+    +'  → Le fond IGN nécessite une connexion internet.\n\n'
+    +'CONTENU DU ZIP :\n'
+    +'  projet_photos.qgs        →  Projet QGIS pré-configuré (v3.40)\n'
+    +'  photos.geojson           →  Couche de points WGS84 (EPSG:4326), utilisée par le .qgs\n'
+    +'  photos.csv               →  Table lat/lon\n'
+    +'  photos.shp/.shx/.dbf     →  Shapefile ESRI réel (points 3D), pour tout logiciel SIG\n'
+    +'  photos.prj / photos.cpg  →  Projection (WGS84) et encodage (UTF-8) du Shapefile\n'
+    +'  photos/                  →  Photos compressées (JPEG)\n\n'
+    +'IMPORTANT : gardez tous les fichiers dans le même dossier.\n'
+    +'Les chemins sont relatifs.\n\n'
+    +'Projection : WGS 84 (EPSG:4326) pour Shapefile/GeoJSON/CSV, projet QGIS en Pseudo-Mercator (EPSG:3857)\n'
+    +'Fond de carte : IGN Géoplateforme WMTS (data.geopf.fr)\n'
+    +'Photos : '+pts.length+' (format JPEG universel)\n');
+  setStatus('Compression du ZIP… 0%');
+  return await zip.generateAsync({type:'blob'},meta=>{
+    const pct=Math.round(meta.percent);
+    setProgress(pct);
+    setStatus('Compression du ZIP… '+pct+'%');
+  });
+}
+
+$('#btnExport').addEventListener('click',async()=>{
   const btn=$('#btnExport'),st=$('#exportStatus'),barWrap=$('#exportBarWrap'),bar=$('#exportBar');
-  btn.disabled=true;btn.textContent='⏳ Génération…';st.textContent='Création des fichiers SIG…';
+  btn.disabled=true;btn.textContent='⏳ Génération…';
   barWrap.classList.remove('hidden');bar.style.width='0';
   try{
-    const used=new Set();
-    const pts=geo.map(p=>{
-      const safeBase=sanitizeFilename(p.displayName);
-      const uniq=uniqueName(safeBase,used);
-      return {name:p.displayName.trim()||uniq,lat:p.lat,lon:p.lon,alt:p.alt||0,photoFile:uniq+'.jpg'};
-    });
-    const zip=new JSZip(),phF=zip.folder('photos');
-    zip.file('photos.geojson',buildGeoJSON(pts));
-    zip.file('photos.csv',buildCSV(pts));
-    st.textContent='Création du Shapefile…';
-    const {shp,shx}=buildSHP_SHX(pts);
-    zip.file('photos.shp',shp);
-    zip.file('photos.shx',shx);
-    zip.file('photos.dbf',buildDBF(pts));
-    zip.file('photos.prj',buildPRJ());
-    zip.file('photos.cpg','UTF-8');
-    st.textContent='Création du projet QGIS…';
-    zip.file('projet_photos.qgs',buildQGSProject(pts));
-    st.textContent='Ajout des photos…';
-    geo.forEach((p,i)=>phF.file(pts[i].photoFile,p.blob));
-    zip.file('LISEZ-MOI.txt',
-      'EXPORT QGIS - Photos géolocalisées\n'
-      +'====================================\n\n'
-      +'METHODE RECOMMANDEE :\n'
-      +'  1. Dézippez ce dossier\n'
-      +'  2. Double-cliquez sur projet_photos.qgs\n'
-      +'  3. QGIS s\'ouvre avec tout configuré :\n'
-      +'     - Fond de carte : Orthophotos IGN 2024 (WMTS)\n'
-      +'     - Couche de points sur la carte (GeoJSON)\n'
-      +'     - Infobulles avec aperçu photo au survol\n'
-      +'     - Formulaire avec visionneuse photo au clic\n'
-      +'     - Étiquettes avec noms des photos\n\n'
-      +'  → Pour activer les infobulles : Vue > Sketcher d\'infobulles\n'
-      +'     ou cliquez l\'icône infobulle dans la barre d\'outils\n\n'
-      +'  → Le fond IGN nécessite une connexion internet.\n\n'
-      +'CONTENU DU ZIP :\n'
-      +'  projet_photos.qgs        →  Projet QGIS pré-configuré (v3.40)\n'
-      +'  photos.geojson           →  Couche de points WGS84 (EPSG:4326), utilisée par le .qgs\n'
-      +'  photos.csv               →  Table lat/lon\n'
-      +'  photos.shp/.shx/.dbf     →  Shapefile ESRI réel (points 3D), pour tout logiciel SIG\n'
-      +'  photos.prj / photos.cpg  →  Projection (WGS84) et encodage (UTF-8) du Shapefile\n'
-      +'  photos/                  →  Photos compressées (JPEG)\n\n'
-      +'IMPORTANT : gardez tous les fichiers dans le même dossier.\n'
-      +'Les chemins sont relatifs.\n\n'
-      +'Projection : WGS 84 (EPSG:4326) pour Shapefile/GeoJSON/CSV, projet QGIS en Pseudo-Mercator (EPSG:3857)\n'
-      +'Fond de carte : IGN Géoplateforme WMTS (data.geopf.fr)\n'
-      +'Photos : '+pts.length+' (format JPEG universel)\n');
-    st.textContent='Compression du ZIP… 0%';
-    const c=await zip.generateAsync({type:'blob'},meta=>{
-      const pct=Math.round(meta.percent);
-      bar.style.width=pct+'%';
-      st.textContent='Compression du ZIP… '+pct+'%';
-    });
-    const a=document.createElement('a');a.href=URL.createObjectURL(c);a.download='export_qgis_photos.zip';a.click();
+    const blob=await buildExportZip(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='export_qgis_photos.zip';a.click();
     bar.style.width='100%';
     st.textContent='✓ Export terminé !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
   btn.disabled=false;btn.textContent='🌍 Générer et télécharger le ZIP';
+});
+
+$('#btnExportEmail').addEventListener('click',async()=>{
+  const btn=$('#btnExportEmail'),orig=btn.textContent,st=$('#exportStatus'),barWrap=$('#exportBarWrap'),bar=$('#exportBar');
+  btn.disabled=true;btn.textContent='⏳ Génération…';
+  barWrap.classList.remove('hidden');bar.style.width='0';
+  try{
+    const blob=await buildExportZip(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
+    bar.style.width='100%';
+    st.textContent='Ouverture du partage…';
+    await shareOrEmailFile(blob,'export_qgis_photos.zip','Export QGIS - Photos géolocalisées','Voici l\'export QGIS (projet + GeoJSON + Shapefile + photos).');
+    st.textContent='✓ Prêt !';
+  }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
+  btn.disabled=false;btn.textContent=orig;
 });
 
 // ============================
