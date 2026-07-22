@@ -669,7 +669,9 @@ function pickZoomForSpan(mercSpan,targetPixels,minZoom,maxZoom){
 // ou null si la connexion échoue, si le service ne répond pas avec des en-têtes
 // CORS permissifs (canvas "taché"), ou si l'utilisateur est hors ligne — dans
 // tous les cas on retombe silencieusement sur le plan schématique existant.
-async function tryFetchIgnBasemap(lonMin,latMin,lonMax,latMax,zoom,maxTiles,minZoom){
+async function tryFetchIgnBasemap(lonMin,latMin,lonMax,latMax,zoom,maxTiles,minZoom,layer,format){
+  layer=layer||'ORTHOIMAGERY.ORTHOPHOTOS2024';
+  format=format||'image/jpeg';
   if(typeof navigator!=='undefined'&&navigator.onLine===false)return null;
   maxTiles=maxTiles||140;
   const HARD_MAX_TILES=420; // garde-fou absolu, même pour rester au zoom minimal demandé
@@ -700,8 +702,8 @@ async function tryFetchIgnBasemap(lonMin,latMin,lonMax,latMax,zoom,maxTiles,minZ
 
     const loaded=await mapWithConcurrency(tiles,6,async t=>{
       const url='https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile'
-        +'&LAYER=ORTHOIMAGERY.ORTHOPHOTOS2024&STYLE=normal&TILEMATRIXSET=PM'
-        +'&TILEMATRIX='+z+'&TILEROW='+t.row+'&TILECOL='+t.col+'&FORMAT=image/jpeg';
+        +'&LAYER='+layer+'&STYLE=normal&TILEMATRIXSET=PM'
+        +'&TILEMATRIX='+z+'&TILEROW='+t.row+'&TILECOL='+t.col+'&FORMAT='+format;
       try{
         const img=new Image();
         img.crossOrigin='anonymous';
@@ -2433,6 +2435,19 @@ function loadImageElement(blob){
 // Palette du compte-rendu (RVB), cohérente avec l'identité visuelle de l'outil.
 const PDF_COL_DARK=[16,17,20],PDF_COL_GREEN=[52,199,89],PDF_COL_BLUE=[41,182,246],PDF_COL_RED=[214,40,40];
 
+// Flèche du nord : cercle, triangle plein pointant vers le haut, lettre N
+// au-dessus — dessinée en vectoriel (net à toute résolution d'impression,
+// jamais pixelisée) plutôt qu'en image bitmap importée.
+function drawNorthArrow(doc,cx,cy,r){
+  doc.setFillColor(255);doc.circle(cx,cy,r,'F');
+  doc.setDrawColor(20);doc.setLineWidth(0.6);doc.circle(cx,cy,r,'S');
+  doc.setFillColor(20);
+  doc.triangle(cx,cy-r*0.62,cx-r*0.4,cy+r*0.55,cx+r*0.4,cy+r*0.55,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(r*1.55);doc.setTextColor(20);
+  doc.text('N',cx,cy-r-1.3,{align:'center'});
+  doc.setTextColor(0);
+}
+
 // Échelle graphique (barre segmentée + longueur "ronde" adaptée à l'étendue affichée).
 function drawScaleBar(doc,x,y,spanMeters,planWmm){
   const mPerMm=spanMeters/planWmm;
@@ -2493,7 +2508,7 @@ async function drawOverviewInset(doc,corner,insetW,insetH,mxMin,myMin,mxMax,myMa
     pickZoomForSpan(ovSpanX,targetPxW,10,16),
     pickZoomForSpan(ovSpanY,targetPxH,10,16)
   );
-  const overview=await tryFetchIgnBasemap(ovLonMin,ovLatMin,ovLonMax,ovLatMax,ovZoom,90,10);
+  const overview=await tryFetchIgnBasemap(ovLonMin,ovLatMin,ovLonMax,ovLatMax,ovZoom,90,10,'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png');
   if(!overview)return;
 
   doc.setFillColor(210);
@@ -2615,15 +2630,7 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   doc.setTextColor(0);
 
   // flèche du nord (haut-gauche du cadre)
-  const nx=planX+9,ny=planY+15;
-  doc.setFillColor(255);doc.circle(nx,ny+1,6,'F');
-  doc.setDrawColor(70);doc.setLineWidth(0.5);
-  doc.line(nx,ny+5,nx,ny-5);
-  doc.line(nx,ny-5,nx-2.2,ny-0.5);
-  doc.line(nx,ny-5,nx+2.2,ny-0.5);
-  doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(50);
-  doc.text('N',nx,ny+7.5,{align:'center'});
-  doc.setTextColor(0);
+  drawNorthArrow(doc,planX+10,planY+18,6);
 
   // échelle graphique (bas-gauche du cadre)
   drawScaleBar(doc,planX+7,planY+planH-13,mxMax-mxMin,planW);
