@@ -19,12 +19,6 @@
   body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;padding:0 24px 60px;-webkit-font-smoothing:antialiased}
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 
-  /* TABS */
-  .tabs{display:flex;justify-content:center;gap:4px;padding:24px 0 0;animation:fadeUp .4s ease}
-  .tab{padding:10px 24px;border-radius:12px 12px 0 0;border:1px solid var(--border);border-bottom:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px;font-weight:600;font-family:inherit;transition:all .2s}
-  .tab.active{background:rgba(255,255,255,0.05);color:var(--text)}
-  .tab-content{display:none}.tab-content.active{display:block}
-
   .header{text-align:center;padding:32px 0 24px;animation:fadeUp .5s ease}
   .header .tag{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:4px;text-transform:uppercase;margin-bottom:10px}
   .header h1{font-size:clamp(22px,4vw,34px);font-weight:700;line-height:1.1;background:linear-gradient(135deg,#fff 0%,#888 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -39,7 +33,7 @@
   .btn-blue{background:var(--accent2);color:#000;font-weight:700}
   .btn-blue:hover:not(:disabled){filter:brightness(1.1)}
   .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
-  .btn:focus-visible,.tab:focus-visible,.preset-btn:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+  .btn:focus-visible,.preset-btn:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
   .sel-card:focus-visible,.map-photo-item:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
 
   /* Barre d'actions projet (reset) */
@@ -116,27 +110,6 @@
   .rename-ext{color:var(--text4);font-size:12px;flex-shrink:0}
   .dup-warning{max-width:620px;margin:0 auto 12px;padding:10px 14px;border-radius:10px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn);font-size:12px;text-align:center}
 
-  /* Quick-compress results (Tab 1) */
-  .qc-stats{max-width:620px;margin:0 auto 20px;display:none;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 20px;border-radius:14px;background:rgba(52,199,89,.06);border:1px solid var(--accent-border);animation:fadeUp .3s ease}
-  .qc-stats.visible{display:flex}
-  .qc-stats .sub{font-size:12px;color:var(--text3)}
-  .qc-stats .big{font-size:22px;font-weight:700;font-family:'Space Mono',monospace}
-  .qc-stats .big span{font-size:13px;color:var(--text3);font-weight:500;margin-left:4px}
-  .qc-stats-actions{display:flex;gap:8px}
-  .qc-grid{max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
-  .qc-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;animation:fadeUp .3s ease both}
-  .qc-card-img{position:relative;aspect-ratio:1;background:#111}
-  .qc-card-img img{width:100%;height:100%;object-fit:cover;display:block}
-  .qc-remove{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-  .qc-remove:hover{background:var(--danger)}
-  .qc-badge{position:absolute;bottom:6px;left:6px;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;font-family:'Space Mono',monospace;background:rgba(0,0,0,.6);color:var(--accent)}
-  .qc-badge.same{color:var(--text3)}
-  .qc-body{padding:10px 12px}
-  .qc-name{font-size:12px;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
-  .qc-sizes{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px}
-  .qc-sizes .arrow{color:var(--text4)}
-  .qc-sizes .after{color:var(--accent)}
-
   /* Compress (wizard) */
   .compress-status{max-width:620px;margin:0 auto;text-align:center}
   .compress-bar{height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;margin:16px 0}
@@ -186,6 +159,10 @@
   .summary-box{max-width:620px;margin:0 auto 16px;padding:16px 20px;border-radius:14px;font-size:13px;animation:fadeUp .3s ease}
   .summary-box strong{font-family:'Space Mono',monospace}
   .export-bar-wrap{max-width:620px;margin:16px auto 0}
+  .export-options{max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:12px;padding:18px 20px;background:var(--card);border:1px solid var(--border);border-radius:14px}
+  .export-check{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text2);cursor:pointer}
+  .export-check input{width:18px;height:18px;accent-color:var(--accent2);cursor:pointer;flex-shrink:0}
+  .export-check span{color:var(--text4);font-size:12px}
   .load-status-row{display:flex;align-items:center;justify-content:center;gap:10px;max-width:560px;margin:0 auto 20px}
   .load-status-row .load-status{margin:0}
 
@@ -219,14 +196,11 @@
     body{padding:0 14px 16px}
     .header{padding:20px 0 16px}
     .header p{font-size:13px;padding:0 8px}
-    .tabs{gap:2px}
-    .tab{flex:1;padding:12px 10px;font-size:13px;text-align:center}
 
     /* Cibles tactiles plus grandes pour une utilisation sur le terrain */
     .btn{padding:12px 18px;font-size:14px}
     .btn-sm{padding:9px 14px;font-size:13px}
     .sel-check{width:30px;height:30px;font-size:16px}
-    .qc-remove{width:30px;height:30px;font-size:17px}
     .preset-btn{padding:10px 16px}
 
     /* Empêche le zoom automatique iOS sur les champs (nécessite font-size >= 16px) */
@@ -266,13 +240,10 @@
     body{padding:0 10px 16px}
     .step-nav{margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px}
     .select-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
-    .qc-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
     .stepper{gap:0}.step-line{width:14px}
     .step-dot{width:28px;height:28px;font-size:11px}
     .step-label{font-size:9px}
     .dropzone{padding:28px 16px}
-    .qc-stats{flex-direction:column;align-items:stretch;text-align:center}
-    .qc-stats-actions{justify-content:center}
     .map-sidebar{gap:12px}
   }
 </style>
@@ -281,55 +252,7 @@
 
 <div id="libWarning" class="lib-warning hidden">⚠ Certaines librairies n'ont pas pu être chargées (vérifiez votre connexion internet), l'outil risque de ne pas fonctionner correctement.</div>
 
-<div class="tabs" role="tablist">
-  <button class="tab active" data-tab="compress" role="tab" aria-selected="true" aria-controls="tab-compress">📸 Compression rapide</button>
-  <button class="tab" data-tab="gis" role="tab" aria-selected="false" aria-controls="tab-gis">🌍 Export QGIS</button>
-</div>
-
-<!-- ========== TAB 1: QUICK COMPRESS ========== -->
-<div class="tab-content active" id="tab-compress" role="tabpanel">
-  <div class="header">
-    <div class="tag" style="color:var(--accent)">Compression</div>
-    <h1>Compression rapide</h1>
-    <p>Glissez vos images (JPEG, PNG, HEIC/HEIF…), compressez et téléchargez. Tout reste local, dans votre navigateur.</p>
-  </div>
-  <div class="presets-inline" id="qPresets">
-    <button class="preset-btn" data-q="0.85">✦ Légère</button>
-    <button class="preset-btn active" data-q="0.6">✦✦ Moyenne</button>
-    <button class="preset-btn" data-q="0.35">✦✦✦ Forte</button>
-    <button class="preset-btn" data-q="custom">⚙ Custom</button>
-  </div>
-  <div class="slider-wrap-inline hidden" id="qSliderWrap">
-    <span style="font-size:13px;color:var(--text3)">Qualité : <span style="color:var(--accent);font-weight:700" id="qSliderVal">60</span>%</span>
-    <input type="range" id="qSlider" min="5" max="100" value="60" style="width:100%;margin-top:6px">
-  </div>
-  <div class="dropzone" id="qDropzone">
-    <div class="icon" id="qDropIcon">📸</div>
-    <div class="label">Glissez vos photos ici</div>
-    <div class="hint">ou cliquez pour parcourir</div>
-  </div>
-  <input type="file" id="qFileInput" accept="image/*,.heic,.heif" multiple hidden>
-  <input type="file" id="qCameraInput" accept="image/*" capture="environment" hidden>
-  <div style="text-align:center;margin:12px 0 16px">
-    <button class="btn btn-sm btn-outline" id="qCameraBtn">📷 Prendre une photo</button>
-  </div>
-  <div class="load-status-row">
-    <div class="load-status" id="qLoadStatus" aria-live="polite"></div>
-    <button class="btn btn-sm btn-outline hidden" id="qCancelBtn">Annuler</button>
-  </div>
-  <div class="qc-stats" id="qStats">
-    <div><div class="sub" id="qStatsCount"></div><div class="big" id="qStatsSaved"></div></div>
-    <div class="qc-stats-actions">
-      <button class="btn btn-outline" id="qBtnClear">Effacer</button>
-      <button class="btn btn-outline" id="qBtnEmail">📧 E-mail</button>
-      <button class="btn btn-green" id="qBtnDl">↓ Télécharger (.zip)</button>
-    </div>
-  </div>
-  <div class="qc-grid" id="qGrid"></div>
-</div>
-
-<!-- ========== TAB 2: QGIS EXPORT WIZARD ========== -->
-<div class="tab-content" id="tab-gis" role="tabpanel">
+<div id="tab-gis">
   <div class="header">
     <div class="tag" style="color:var(--accent2)">Export QGIS</div>
     <h1>Shapefile + Photos</h1>
@@ -463,10 +386,16 @@
       <input type="text" class="b-pattern" id="projVille" placeholder="Ville">
     </div>
     <div class="summary-box" style="background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent)" id="exportSummary"></div>
+
+    <div class="export-options" id="exportOptions">
+      <label class="export-check"><input type="checkbox" id="optProject" checked> 🌍 Projet QGIS <span>(GeoJSON, CSV, Shapefile, mise en page)</span></label>
+      <label class="export-check"><input type="checkbox" id="optPhotos" checked> 🖼 Photos</label>
+      <label class="export-check"><input type="checkbox" id="optPdf"> 📄 Compte-rendu PDF</label>
+    </div>
+
     <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-      <button class="btn btn-blue" id="btnExport" style="font-size:15px;padding:14px 28px">🌍 Générer et télécharger le ZIP</button>
+      <button class="btn btn-blue" id="btnExportDownload" style="font-size:15px;padding:14px 28px">↓ Télécharger</button>
       <button class="btn btn-outline" id="btnExportEmail" style="font-size:15px;padding:14px 28px">📧 Envoyer par e-mail</button>
-      <button class="btn btn-outline" id="btnExportPdf" style="font-size:15px;padding:14px 28px">📄 Compte-rendu PDF</button>
     </div>
     <div class="export-bar-wrap hidden" id="exportBarWrap">
       <div class="compress-bar"><div class="compress-bar-fill" id="exportBar"></div></div>
@@ -1799,9 +1728,6 @@ function fmtSize(b){if(b<1024)return b+' o';if(b<1048576)return(b/1024).toFixed(
 (function(){
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 
-// --- Tabs ---
-$$('.tab').forEach(t=>t.addEventListener('click',()=>{$$('.tab').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});$$('.tab-content').forEach(x=>x.classList.remove('active'));t.classList.add('active');t.setAttribute('aria-selected','true');$('#tab-'+t.dataset.tab).classList.add('active');if(t.dataset.tab==='gis'&&leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);}));
-
 // --- Utilitaires communs ---
 // Partage natif (ouvre le sélecteur de partage du système, qui inclut l'app
 // mail par défaut sur mobile) avec repli : téléchargement + mailto pré-rempli
@@ -1903,11 +1829,6 @@ function openGpsPrecheck(onContinue,onCancel){
   cancelBtn.onclick=()=>{cleanup();if(onCancel)onCancel();};
 }
 
-// ============================
-// TAB 1: QUICK COMPRESS
-// ============================
-let qQ=0.6,qFiles=[],qId=0,qCancelled=false,qRunning=false;
-
 // -- Mémorisation du dernier réglage de qualité (localStorage) --
 function saveQualityPref(key,presetBtn,sliderVal){
   try{localStorage.setItem(key,JSON.stringify({preset:presetBtn,slider:sliderVal}));}catch(e){}
@@ -1925,102 +1846,8 @@ function applyQualityPref(containerSel,pref,onApply){
   onApply(btn,pref.slider);
 }
 
-$('#qPresets').querySelectorAll('.preset-btn').forEach(b=>{b.addEventListener('click',()=>{$('#qPresets').querySelectorAll('.preset-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');if(b.dataset.q==='custom'){$('#qSliderWrap').classList.remove('hidden');qQ=parseInt($('#qSlider').value)/100;}else{$('#qSliderWrap').classList.add('hidden');qQ=parseFloat(b.dataset.q);}saveQualityPref('photoQgisTool.qQuality',b.dataset.q,$('#qSlider').value);});});
-$('#qSlider').addEventListener('input',e=>{$('#qSliderVal').textContent=e.target.value;qQ=parseInt(e.target.value)/100;saveQualityPref('photoQgisTool.qQuality','custom',e.target.value);});
-applyQualityPref('#qPresets',loadQualityPref('photoQgisTool.qQuality'),(btn,slider)=>{
-  if(btn.dataset.q==='custom'){$('#qSliderWrap').classList.remove('hidden');$('#qSlider').value=slider;$('#qSliderVal').textContent=slider;qQ=parseInt(slider)/100;}
-  else{$('#qSliderWrap').classList.add('hidden');qQ=parseFloat(btn.dataset.q);}
-});
-
-$('#qDropzone').addEventListener('click',()=>$('#qFileInput').click());
-$('#qDropzone').addEventListener('dragover',e=>{e.preventDefault();$('#qDropzone').classList.add('over');});
-$('#qDropzone').addEventListener('dragleave',()=>$('#qDropzone').classList.remove('over'));
-$('#qDropzone').addEventListener('drop',e=>{e.preventDefault();$('#qDropzone').classList.remove('over');if(e.dataTransfer.files.length)qProcess([...e.dataTransfer.files]);});
-$('#qFileInput').addEventListener('change',e=>{if(e.target.files.length)qProcess([...e.target.files]);e.target.value='';});
-$('#qBtnClear').addEventListener('click',()=>{qFiles.forEach(f=>URL.revokeObjectURL(f.preview));qFiles=[];qRender();});
-$('#qBtnDl').addEventListener('click',qDownload);
-$('#qBtnEmail').addEventListener('click',qShareEmail);
-$('#qCancelBtn').addEventListener('click',()=>{qCancelled=true;});
-$('#qCameraBtn').addEventListener('click',()=>$('#qCameraInput').click());
-$('#qCameraInput').addEventListener('change',e=>{if(e.target.files.length)qProcess([...e.target.files]);e.target.value='';});
-
-async function qProcess(fl){
-  const imgs=fl.filter(isImageFile);
-  if(!imgs.length)return;
-  qCancelled=false;qRunning=true;
-  $('#qDropIcon').textContent='⏳';
-  $('#qCancelBtn').classList.remove('hidden');
-  const failed=[];
-  let done=0;
-  const results=await mapWithConcurrency(imgs,4,async(f)=>{
-    if(qCancelled)return null;
-    try{
-      const renderable=await toRenderable(f);
-      if(!renderable){failed.push(f.name);return null;}
-      const r=await compressImg(renderable,qQ);
-      return {name:f.name,os:f.size,cs:r.blob.size,preview:r.preview,blob:r.blob};
-    }catch(e){failed.push(f.name);return null;}
-    finally{done++;$('#qLoadStatus').textContent=(qCancelled?'Annulation… ':'Traitement… ')+done+'/'+imgs.length;}
-  });
-  results.forEach(r=>{if(r)qFiles.push({id:++qId,...r});});
-  qRunning=false;
-  $('#qDropIcon').textContent='📸';
-  $('#qLoadStatus').textContent='';
-  $('#qCancelBtn').classList.add('hidden');
-  if(failed.length)alert('⚠ '+failed.length+' photo(s) n\'ont pas pu être traitées :\n'+failed.join(', '));
-  qRender();
-}
-async function qDownload(){
-  if(qFiles.length===1){const f=qFiles[0],a=document.createElement('a');a.href=URL.createObjectURL(f.blob);a.download=sanitizeFilename(f.name.replace(/\.[^.]+$/,''))+'_compressed.jpg';a.click();return;}
-  const b=$('#qBtnDl');b.textContent='⏳ ZIP…';b.disabled=true;
-  try{
-    const z=new JSZip();const used=new Set();
-    qFiles.forEach(f=>{const base=uniqueName(sanitizeFilename(f.name.replace(/\.[^.]+$/,''))+'_compressed',used);z.file(base+'.jpg',f.blob);});
-    const c=await z.generateAsync({type:'blob'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(c);a.download='photos_compressed.zip';a.click();
-  }catch(e){alert('Erreur : '+e.message);}
-  b.textContent='↓ Télécharger (.zip)';b.disabled=false;
-}
-async function qShareEmail(){
-  if(!qFiles.length)return;
-  const btn=$('#qBtnEmail'),orig=btn.textContent;
-  btn.disabled=true;btn.textContent='⏳…';
-  try{
-    let blob,filename;
-    if(qFiles.length===1){
-      blob=qFiles[0].blob;
-      filename=sanitizeFilename(qFiles[0].name.replace(/\.[^.]+$/,''))+'_compressed.jpg';
-    }else{
-      const z=new JSZip();const used=new Set();
-      qFiles.forEach(f=>{const base=uniqueName(sanitizeFilename(f.name.replace(/\.[^.]+$/,''))+'_compressed',used);z.file(base+'.jpg',f.blob);});
-      blob=await z.generateAsync({type:'blob'});
-      filename='photos_compressed.zip';
-    }
-    await shareOrEmailFile(blob,filename,'Photos compressées','Voici les photos compressées.');
-  }catch(e){alert('Erreur : '+e.message);}
-  btn.disabled=false;btn.textContent=orig;
-}
-function qRender(){
-  const s=$('#qStats'),g=$('#qGrid');
-  if(!qFiles.length){s.classList.remove('visible');g.innerHTML='';return;}
-  s.classList.add('visible');
-  const to=qFiles.reduce((a,f)=>a+f.os,0),tc=qFiles.reduce((a,f)=>a+f.cs,0),sv=to-tc;
-  $('#qStatsCount').textContent=qFiles.length+' photo'+(qFiles.length>1?'s':'')+' • Économie';
-  $('#qStatsSaved').innerHTML=fmtSize(sv)+'<span>('+(to>0?((sv/to)*100).toFixed(0):0)+'%)</span>';
-  g.innerHTML='';
-  const frag=document.createDocumentFragment();
-  qFiles.forEach(f=>{
-    const sv2=f.os-f.cs,pc=f.os>0?((sv2/f.os)*100).toFixed(0):0;
-    const cd=document.createElement('div');cd.className='qc-card';
-    cd.innerHTML='<div class="qc-card-img"><img src="'+f.preview+'" alt="Aperçu compressé de '+escapeAttr(f.name)+'"><button class="qc-remove" data-id="'+f.id+'" aria-label="Retirer '+escapeAttr(f.name)+'">×</button><div class="qc-badge '+(sv2>0?'':'same')+'">'+(sv2>0?'−'+pc+'%':'≈')+'</div></div><div class="qc-body"><div class="qc-name">'+escapeAttr(f.name)+'</div><div class="qc-sizes"><span>'+fmtSize(f.os)+'</span><span class="arrow">→</span><span class="after">'+fmtSize(f.cs)+'</span></div></div>';
-    cd.querySelector('.qc-remove').addEventListener('click',()=>{URL.revokeObjectURL(f.preview);qFiles=qFiles.filter(x=>x.id!==f.id);qRender();});
-    frag.appendChild(cd);
-  });
-  g.appendChild(frag);
-}
-
 // ============================
-// TAB 2: QGIS WIZARD
+// QGIS WIZARD
 // ============================
 let gisAll=[], gisSelected=[], gisQ=0.6, currentStep=0, leafletMap=null, markers={}, placingId=null;
 let selSearch='', selSort='name-asc', filterNoGps=false;
@@ -2434,70 +2261,23 @@ function renderExport(){
     const to=withSizes.reduce((a,p)=>a+p.file.size,0),tc=withSizes.reduce((a,p)=>a+p.compSize,0),sv=to-tc;
     html+='<br><br>Taille totale des photos : <strong>'+fmtSize(to)+'</strong> → <strong>'+fmtSize(tc)+'</strong> ('+(to>0?'−'+((sv/to)*100).toFixed(0):0)+'%)';
   }
-  html+='<br><br>Le ZIP contiendra : <strong>projet QGIS</strong> (.qgs) + <strong>GeoJSON</strong> + <strong>CSV</strong> + <strong>Shapefile réel</strong> (.shp/.shx/.dbf/.prj) + photos JPEG<br><span style="font-size:11px;color:var(--text4)">Double-cliquez sur le .qgs → tout est prêt dans QGIS (le Shapefile est fourni en plus, utilisable dans n\'importe quel logiciel SIG)</span>';
   $('#exportSummary').innerHTML=html;
 }
 
-// Construit le ZIP d'export complet (QGIS + GeoJSON + CSV + Shapefile + photos).
-// Partagé entre le bouton "Télécharger" et le bouton "Envoyer par e-mail".
-async function buildExportZip(setStatus,setProgress){
-  const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null&&p.blob);
-  if(!geo.length)throw new Error('Aucune photo géolocalisée et compressée à exporter.');
-  setStatus('Création des fichiers SIG…');
-  const used=new Set();
-  const pts=geo.map(p=>{
-    const safeBase=sanitizeFilename(p.displayName);
-    const uniq=uniqueName(safeBase,used);
-    return {name:p.displayName.trim()||uniq,lat:p.lat,lon:p.lon,alt:p.alt||0,photoFile:uniq+'.jpg'};
-  });
-  const zip=new JSZip(),phF=zip.folder('photos');
-  zip.file('photos.geojson',buildGeoJSON(pts));
-  zip.file('photos.csv',buildCSV(pts));
-  setStatus('Création du Shapefile…');
-  const {shp,shx}=buildSHP_SHX(pts);
-  zip.file('photos.shp',shp);
-  zip.file('photos.shx',shx);
-  zip.file('photos.dbf',buildDBF(pts));
-  zip.file('photos.prj',buildPRJ());
-  zip.file('photos.cpg','UTF-8');
-  setStatus('Création du projet QGIS…');
-  zip.file('projet_photos.qgs',buildQGSProject(pts,getProjectTitle()));
-  setStatus('Ajout des photos…');
-  geo.forEach((p,i)=>phF.file(pts[i].photoFile,p.blob));
-  zip.file('LISEZ-MOI.txt',
-    'EXPORT QGIS - Photos géolocalisées\n'
-    +'====================================\n\n'
-    +'METHODE RECOMMANDEE :\n'
-    +'  1. Dézippez ce dossier\n'
-    +'  2. Double-cliquez sur projet_photos.qgs\n'
-    +'  3. QGIS s\'ouvre avec tout configuré :\n'
-    +'     - Fond de carte : Orthophotos IGN 2024 (WMTS)\n'
-    +'     - Couche de points sur la carte (GeoJSON)\n'
-    +'     - Infobulles avec aperçu photo au survol\n'
-    +'     - Formulaire avec visionneuse photo au clic\n'
-    +'     - Étiquettes avec noms des photos\n\n'
-    +'  → Pour activer les infobulles : Vue > Sketcher d\'infobulles\n'
-    +'     ou cliquez l\'icône infobulle dans la barre d\'outils\n\n'
-    +'  → Le fond IGN nécessite une connexion internet.\n\n'
-    +'CONTENU DU ZIP :\n'
-    +'  projet_photos.qgs        →  Projet QGIS pré-configuré (v3.40)\n'
-    +'  photos.geojson           →  Couche de points WGS84 (EPSG:4326), utilisée par le .qgs\n'
-    +'  photos.csv               →  Table lat/lon\n'
-    +'  photos.shp/.shx/.dbf     →  Shapefile ESRI réel (points 3D), pour tout logiciel SIG\n'
-    +'  photos.prj / photos.cpg  →  Projection (WGS84) et encodage (UTF-8) du Shapefile\n'
-    +'  photos/                  →  Photos compressées (JPEG)\n\n'
-    +'IMPORTANT : gardez tous les fichiers dans le même dossier.\n'
-    +'Les chemins sont relatifs.\n\n'
-    +'Projection : WGS 84 (EPSG:4326) pour Shapefile/GeoJSON/CSV, projet QGIS en Pseudo-Mercator (EPSG:3857)\n'
-    +'Fond de carte : IGN Géoplateforme WMTS (data.geopf.fr)\n'
-    +'Photos : '+pts.length+' (format JPEG universel)\n');
-  setStatus('Compression du ZIP… 0%');
-  return await zip.generateAsync({type:'blob'},meta=>{
-    const pct=Math.round(meta.percent);
-    setProgress(pct);
-    setStatus('Compression du ZIP… '+pct+'%');
-  });
+function getExportOptions(){
+  return {
+    project:$('#optProject').checked,
+    photos:$('#optPhotos').checked,
+    pdf:$('#optPdf').checked,
+  };
 }
+function updateExportButtons(){
+  const opts=getExportOptions();
+  const any=opts.project||opts.photos||opts.pdf;
+  $('#btnExportDownload').disabled=!any;
+  $('#btnExportEmail').disabled=!any;
+}
+['#optProject','#optPhotos','#optPdf'].forEach(sel=>$(sel).addEventListener('change',updateExportButtons));
 
 // Nom de fichier court dérivé du titre de projet (Client - Ville), ou "photos" par défaut.
 function exportFileSlug(){
@@ -2506,17 +2286,106 @@ function exportFileSlug(){
   return sanitizeFilename(t).replace(/\s+/g,'_');
 }
 
-$('#btnExport').addEventListener('click',async()=>{
-  const btn=$('#btnExport'),st=$('#exportStatus'),barWrap=$('#exportBarWrap'),bar=$('#exportBar');
+// Construit le contenu à exporter selon les cases cochées (projet QGIS / photos /
+// compte-rendu PDF). Renvoie {blob,filename} — un fichier unique si un seul élément
+// simple est demandé (PDF seul, ou une photo seule), sinon un ZIP qui les regroupe.
+// Partagé entre le bouton "Télécharger" et le bouton "Envoyer par e-mail".
+async function buildSelectedContent(setStatus,setProgress){
+  const opts=getExportOptions();
+  if(!opts.project&&!opts.photos&&!opts.pdf)throw new Error('Sélectionnez au moins un élément à exporter.');
+  const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null&&p.blob);
+  if(!geo.length)throw new Error('Aucune photo géolocalisée et compressée à exporter.');
+
+  if(opts.pdf&&!opts.project&&!opts.photos){
+    const doc=await buildPhotoReportPDF(geo,setStatus,getProjectTitle());
+    return {blob:doc.output('blob'),filename:'compte-rendu-'+exportFileSlug()+'.pdf'};
+  }
+  if(opts.photos&&!opts.project&&!opts.pdf&&geo.length===1){
+    return {blob:geo[0].blob,filename:sanitizeFilename(geo[0].displayName)+'.jpg'};
+  }
+
+  const zip=new JSZip();
+  const used=new Set();
+  const pts=geo.map(p=>{
+    const safeBase=sanitizeFilename(p.displayName);
+    const uniq=uniqueName(safeBase,used);
+    return {name:p.displayName.trim()||uniq,lat:p.lat,lon:p.lon,alt:p.alt||0,photoFile:uniq+'.jpg'};
+  });
+
+  if(opts.project){
+    setStatus('Création des fichiers SIG…');
+    zip.file('photos.geojson',buildGeoJSON(pts));
+    zip.file('photos.csv',buildCSV(pts));
+    const {shp,shx}=buildSHP_SHX(pts);
+    zip.file('photos.shp',shp);
+    zip.file('photos.shx',shx);
+    zip.file('photos.dbf',buildDBF(pts));
+    zip.file('photos.prj',buildPRJ());
+    zip.file('photos.cpg','UTF-8');
+    setStatus('Création du projet QGIS…');
+    zip.file('projet_photos.qgs',buildQGSProject(pts,getProjectTitle()));
+  }
+  if(opts.photos){
+    setStatus('Ajout des photos…');
+    const phF=opts.project?zip.folder('photos'):zip;
+    geo.forEach((p,i)=>phF.file(pts[i].photoFile,p.blob));
+  }
+  if(opts.pdf){
+    setStatus('Création du compte-rendu PDF…');
+    const doc=await buildPhotoReportPDF(geo,setStatus,getProjectTitle());
+    zip.file('compte-rendu-'+exportFileSlug()+'.pdf',doc.output('blob'));
+  }
+  if(opts.project){
+    zip.file('LISEZ-MOI.txt',
+      'EXPORT QGIS - Photos géolocalisées\n'
+      +'====================================\n\n'
+      +'METHODE RECOMMANDEE :\n'
+      +'  1. Dézippez ce dossier\n'
+      +'  2. Double-cliquez sur projet_photos.qgs\n'
+      +'  3. QGIS s\'ouvre avec tout configuré :\n'
+      +'     - Fond de carte : Orthophotos IGN 2024 (WMTS)\n'
+      +'     - Couche de points sur la carte (GeoJSON)\n'
+      +'     - Infobulles avec aperçu photo au survol\n'
+      +'     - Formulaire avec visionneuse photo au clic\n'
+      +'     - Étiquettes avec noms des photos\n'
+      +'     - Mise en page prête à imprimer (Projet > Mises en page)\n\n'
+      +'  → Pour activer les infobulles : Vue > Sketcher d\'infobulles\n'
+      +'     ou cliquez l\'icône infobulle dans la barre d\'outils\n\n'
+      +'  → Le fond IGN nécessite une connexion internet.\n\n'
+      +'CONTENU DU ZIP :\n'
+      +'  projet_photos.qgs        →  Projet QGIS pré-configuré (v3.40)\n'
+      +'  photos.geojson           →  Couche de points WGS84 (EPSG:4326), utilisée par le .qgs\n'
+      +'  photos.csv               →  Table lat/lon\n'
+      +'  photos.shp/.shx/.dbf     →  Shapefile ESRI réel (points 3D), pour tout logiciel SIG\n'
+      +'  photos.prj / photos.cpg  →  Projection (WGS84) et encodage (UTF-8) du Shapefile\n'
+      +(opts.photos?'  photos/                  →  Photos compressées (JPEG)\n':'')
+      +(opts.pdf?'  compte-rendu-*.pdf       →  Compte-rendu photographique\n':'')
+      +'\nIMPORTANT : gardez tous les fichiers dans le même dossier.\n'
+      +'Les chemins sont relatifs.\n\n'
+      +'Projection : WGS 84 (EPSG:4326) pour Shapefile/GeoJSON/CSV, projet QGIS en Pseudo-Mercator (EPSG:3857)\n'
+      +'Fond de carte : IGN Géoplateforme WMTS (data.geopf.fr)\n'
+      +'Photos : '+pts.length+' (format JPEG universel)\n');
+  }
+  setStatus('Compression du ZIP… 0%');
+  const blob=await zip.generateAsync({type:'blob'},meta=>{
+    const pct=Math.round(meta.percent);
+    setProgress(pct);
+    setStatus('Compression du ZIP… '+pct+'%');
+  });
+  return {blob,filename:'export_'+exportFileSlug()+'.zip'};
+}
+
+$('#btnExportDownload').addEventListener('click',async()=>{
+  const btn=$('#btnExportDownload'),orig=btn.textContent,st=$('#exportStatus'),barWrap=$('#exportBarWrap'),bar=$('#exportBar');
   btn.disabled=true;btn.textContent='⏳ Génération…';
   barWrap.classList.remove('hidden');bar.style.width='0';
   try{
-    const blob=await buildExportZip(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='export_qgis_'+exportFileSlug()+'.zip';a.click();
+    const {blob,filename}=await buildSelectedContent(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
     bar.style.width='100%';
     st.textContent='✓ Export terminé !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
-  btn.disabled=false;btn.textContent='🌍 Générer et télécharger le ZIP';
+  btn.disabled=false;btn.textContent=orig;updateExportButtons();
 });
 
 $('#btnExportEmail').addEventListener('click',async()=>{
@@ -2524,13 +2393,13 @@ $('#btnExportEmail').addEventListener('click',async()=>{
   btn.disabled=true;btn.textContent='⏳ Génération…';
   barWrap.classList.remove('hidden');bar.style.width='0';
   try{
-    const blob=await buildExportZip(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
+    const {blob,filename}=await buildSelectedContent(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
     bar.style.width='100%';
     st.textContent='Ouverture du partage…';
-    await shareOrEmailFile(blob,'export_qgis_'+exportFileSlug()+'.zip','Export QGIS - '+getProjectTitle(),'Voici l\'export QGIS (projet + GeoJSON + Shapefile + photos).');
+    await shareOrEmailFile(blob,filename,getProjectTitle(),'Voici les fichiers demandés.');
     st.textContent='✓ Prêt !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
-  btn.disabled=false;btn.textContent=orig;
+  btn.disabled=false;btn.textContent=orig;updateExportButtons();
 });
 
 // ---- Compte-rendu photographique PDF ----
@@ -2677,19 +2546,6 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   return doc;
 }
 
-$('#btnExportPdf').addEventListener('click',async()=>{
-  const btn=$('#btnExportPdf'),orig=btn.textContent,st=$('#exportStatus');
-  const geo=gisSelected.filter(p=>p.lat!==null&&p.lon!==null&&p.blob);
-  if(!geo.length){alert('Aucune photo géolocalisée et compressée à inclure dans le compte-rendu.');return;}
-  btn.disabled=true;btn.textContent='⏳ Génération…';
-  try{
-    const doc=await buildPhotoReportPDF(geo,msg=>st.textContent=msg,getProjectTitle());
-    doc.save('compte-rendu-'+exportFileSlug()+'.pdf');
-    st.textContent='✓ Compte-rendu généré !';
-  }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
-  btn.disabled=false;btn.textContent=orig;
-});
-
 // ============================
 // STEPPER NAVIGATION
 // ============================
@@ -2705,7 +2561,7 @@ function goToStep(s){
   if(s===1)renderRename();
   if(s===2){$('#compStart').disabled=false;$('#compStart').textContent='Lancer la compression';$('#compBar').style.width='0';$('#compLabel').textContent='Prêt à compresser';$('#compResults').classList.add('hidden');}
   if(s===3){setTimeout(()=>{renderMap();},150);}
-  if(s===4){renderExport();$('#exportBarWrap').classList.add('hidden');$('#exportStatus').textContent='';}
+  if(s===4){renderExport();updateExportButtons();$('#exportBarWrap').classList.add('hidden');$('#exportStatus').textContent='';}
   updateNav();
 }
 
