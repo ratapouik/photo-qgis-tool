@@ -456,6 +456,12 @@
 
   <!-- STEP 4: EXPORT -->
   <div class="step-panel" id="step-4">
+    <div class="bulk-rename-bar" style="margin-bottom:16px">
+      <label>Client :</label>
+      <input type="text" class="b-pattern" id="projClient" placeholder="Nom du client">
+      <label>Ville :</label>
+      <input type="text" class="b-pattern" id="projVille" placeholder="Ville">
+    </div>
     <div class="summary-box" style="background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent)" id="exportSummary"></div>
     <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
       <button class="btn btn-blue" id="btnExport" style="font-size:15px;padding:14px 28px">🌍 Générer et télécharger le ZIP</button>
@@ -690,8 +696,117 @@ function makeUuid(){
     return v.toString(16);
   })+'}';
 }
+function escapeAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+async function mapWithConcurrency(items,limit,fn){
+  const results=new Array(items.length);
+  let idx=0;
+  async function worker(){
+    while(idx<items.length){
+      const i=idx++;
+      results[i]=await fn(items[i],i);
+    }
+  }
+  const workers=Array.from({length:Math.min(limit,items.length)},worker);
+  await Promise.all(workers);
+  return results;
+}
+function fromWebMercator(x,y){
+  const R=6378137;
+  const lon=x/R*180/Math.PI;
+  const lat=(2*Math.atan(Math.exp(y/R))-Math.PI/2)*180/Math.PI;
+  return [lon,lat];
+}
+// Coordonnées de tuile (fractionnaires) façon "slippy map" standard, dont le
+// référentiel WMTS "PM" (Pseudo-Mercator) de l'IGN est un cas particulier.
+function lonLatToTileXY(lon,lat,z){
+  const n=Math.pow(2,z);
+  const x=(lon+180)/360*n;
+  const latRad=lat*Math.PI/180;
+  const y=(1-Math.log(Math.tan(latRad)+1/Math.cos(latRad))/Math.PI)/2*n;
+  return [x,y];
+}
+// Choisit le zoom le plus élevé (meilleure résolution) tel que la mosaïque de
+// tuiles nécessaire pour couvrir l'étendue reste raisonnable (limite le nombre
+// de requêtes réseau). Bornes 6-19 : plage disponible pour l'orthophoto IGN.
+function pickIgnZoom(lonMin,latMin,lonMax,latMax,maxTiles){
+  maxTiles=maxTiles||48;
+  for(let z=19;z>=6;z--){
+    const [x0,y0]=lonLatToTileXY(lonMin,latMax,z);
+    const [x1,y1]=lonLatToTileXY(lonMax,latMin,z);
+    const nx=Math.floor(x1)-Math.floor(x0)+1,ny=Math.floor(y1)-Math.floor(y0)+1;
+    if(nx>0&&ny>0&&nx*ny<=maxTiles)return z;
+  }
+  return 6;
+}
+// Tente de composer une image du fond de carte IGN (orthophotos) pour la bbox
+// donnée (EPSG:4326). Renvoie un canvas prêt pour doc.addImage(), ou null si la
+// connexion échoue, si le service ne répond pas avec des en-têtes CORS
+// permissifs (canvas "taché"), ou si l'utilisateur est hors ligne — dans tous
+// les cas on retombe silencieusement sur le plan schématique existant.
+async function tryFetchIgnBasemap(lonMin,latMin,lonMax,latMax){
+  if(typeof navigator!=='undefined'&&navigator.onLine===false)return null;
+  try{
+    const TILE=256;
+    const z=pickIgnZoom(lonMin,latMin,lonMax,latMax);
+    const [xMinF,yMinF]=lonLatToTileXY(lonMin,latMax,z);
+    const [xMaxF,yMaxF]=lonLatToTileXY(lonMax,latMin,z);
+    const xTile0=Math.floor(xMinF),xTile1=Math.floor(xMaxF);
+    const yTile0=Math.floor(yMinF),yTile1=Math.floor(yMaxF);
+    const nx=xTile1-xTile0+1,ny=yTile1-yTile0+1;
+    if(nx<=0||ny<=0||nx*ny>80)return null;
 
-function buildQGSProject(pts){
+    const tiles=[];
+    for(let ty=0;ty<ny;ty++)for(let tx=0;tx<nx;tx++)tiles.push({tx,ty,col:xTile0+tx,row:yTile0+ty});
+
+    const loaded=await mapWithConcurrency(tiles,6,async t=>{
+      const url='https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile'
+        +'&LAYER=ORTHOIMAGERY.ORTHOPHOTOS2024&STYLE=normal&TILEMATRIXSET=PM'
+        +'&TILEMATRIX='+z+'&TILEROW='+t.row+'&TILECOL='+t.col+'&FORMAT=image/jpeg';
+      try{
+        const img=new Image();
+        img.crossOrigin='anonymous';
+        const ready=new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('tuile illisible'));});
+        img.src=url;
+        await Promise.race([ready,new Promise((_,rej)=>setTimeout(()=>rej(new Error('délai dépassé')),10000))]);
+        return {...t,img};
+      }catch(e){return {...t,img:null};}
+    });
+
+    if(!loaded.some(t=>t.img))return null;
+
+    const canvas=document.createElement('canvas');
+    canvas.width=nx*TILE;canvas.height=ny*TILE;
+    const ctx=canvas.getContext('2d');
+    loaded.forEach(t=>{if(t.img)ctx.drawImage(t.img,t.tx*TILE,t.ty*TILE,TILE,TILE);});
+
+    // recadrage précis sur la bbox demandée (les tuiles couvrent une zone un peu plus large)
+    const cropX=(xMinF-xTile0)*TILE,cropY=(yMinF-yTile0)*TILE;
+    const cropW=(xMaxF-xMinF)*TILE,cropH=(yMaxF-yMinF)*TILE;
+    const out=document.createElement('canvas');
+    out.width=Math.max(1,Math.round(cropW));out.height=Math.max(1,Math.round(cropH));
+    out.getContext('2d').drawImage(canvas,cropX,cropY,cropW,cropH,0,0,out.width,out.height);
+
+    // Si une tuile provient d'un serveur sans en-têtes CORS permissifs, le canvas
+    // devient "taché" : la lecture ci-dessous échoue et on retombe sur le schéma.
+    out.getContext('2d').getImageData(0,0,1,1);
+    return out;
+  }catch(e){
+    return null;
+  }
+}
+
+// Titre de projet au format "Client - Ville" (retombe sur un intitulé par défaut
+// si les deux champs sont vides). Utilisé pour le projet QGIS, la mise en page,
+// le PDF et les noms de fichiers exportés.
+function getProjectTitle(){
+  const clientEl=document.getElementById('projClient'),villeEl=document.getElementById('projVille');
+  const client=clientEl?clientEl.value.trim():'',ville=villeEl?villeEl.value.trim():'';
+  if(client&&ville)return client+' - '+ville;
+  return client||ville||'Photos géolocalisées';
+}
+
+function buildQGSProject(pts,projectTitle){
+  projectTitle=projectTitle||'Photos géolocalisées';
   let xn=Infinity,yn=Infinity,xx=-Infinity,yx=-Infinity;
   pts.forEach(p=>{if(p.lon<xn)xn=p.lon;if(p.lon>xx)xx=p.lon;if(p.lat<yn)yn=p.lat;if(p.lat>yx)yx=p.lat;});
   const pad=0.005;xn-=pad;yn-=pad;xx+=pad;yx+=pad;
@@ -702,9 +817,9 @@ function buildQGSProject(pts){
   const wmtsId='ortho_ign_'+Date.now();
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<qgis projectname="Photos geolocalisees" version="3.40.5-Bratislava">
+<qgis projectname="${escapeAttr(projectTitle)}" version="3.40.5-Bratislava">
   <homePath path=""/>
-  <title>Photos géolocalisées</title>
+  <title>${escapeAttr(projectTitle)}</title>
   <transaction mode="Disabled"/>
   <projectCrs>
     <spatialrefsys nativeFormat="Wkt">
@@ -888,7 +1003,7 @@ function buildQGSProject(pts){
     </SpatialRefSys>
     <Measurement><AreaUnits type="QString">m2</AreaUnits><DistanceUnits type="QString">meters</DistanceUnits></Measurement>
   </properties>
-${buildLayoutXML(pts)}
+${buildLayoutXML(pts,projectTitle)}
   <visibility-presets/>
   <mapViewDocks/>
 </qgis>`;
@@ -899,7 +1014,8 @@ ${buildLayoutXML(pts)}
 // page produite par QGIS 3.34 lui-même (via PyQGIS) plutôt que d'être écrit
 // à la main : garantit une structure reconnue sans risque de faire planter
 // l'ouverture du projet.
-function buildLayoutXML(pts){
+function buildLayoutXML(pts,projectTitle){
+  projectTitle=projectTitle||'Photos géolocalisées';
   let lonMin=Infinity,lonMax=-Infinity,latMin=Infinity,latMax=-Infinity;
   pts.forEach(p=>{if(p.lon<lonMin)lonMin=p.lon;if(p.lon>lonMax)lonMax=p.lon;if(p.lat<latMin)latMin=p.lat;if(p.lat>latMax)latMax=p.lat;});
   if(lonMin===lonMax){lonMin-=0.001;lonMax+=0.001;}
@@ -924,7 +1040,7 @@ function buildLayoutXML(pts){
   const mapUuid=makeUuid(),pageBgUuid=makeUuid(),titleUuid=makeUuid(),legendUuid=makeUuid(),scalebarUuid=makeUuid();
   const sym1=makeUuid(),sym2=makeUuid(),sym3=makeUuid(),sym4=makeUuid(),sym5=makeUuid();
   const layoutName='Compte-rendu photos';
-  const titleText='Plan de localisation des photos ('+pts.length+' photo'+(pts.length>1?'s':'')+')';
+  const titleText=escapeAttr(projectTitle+' — Plan de localisation des photos ('+pts.length+' photo'+(pts.length>1?'s':'')+')');
   return `<Layouts>
     <Layout worldFileMap="" name="${layoutName}" printResolution="300" units="mm">
       <Snapper snapToGuides="1" tolerance="5" snapToItems="1" snapToGrid="0"/>
@@ -1687,7 +1803,6 @@ const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
 $$('.tab').forEach(t=>t.addEventListener('click',()=>{$$('.tab').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});$$('.tab-content').forEach(x=>x.classList.remove('active'));t.classList.add('active');t.setAttribute('aria-selected','true');$('#tab-'+t.dataset.tab).classList.add('active');if(t.dataset.tab==='gis'&&leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);}));
 
 // --- Utilitaires communs ---
-function escapeAttr(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 // Partage natif (ouvre le sélecteur de partage du système, qui inclut l'app
 // mail par défaut sur mobile) avec repli : téléchargement + mailto pré-rempli
 // si le partage de fichier n'est pas supporté (typiquement sur ordinateur).
@@ -1786,20 +1901,6 @@ function openGpsPrecheck(onContinue,onCancel){
 
   continueBtn.onclick=()=>{cleanup();onContinue(lastPosition);};
   cancelBtn.onclick=()=>{cleanup();if(onCancel)onCancel();};
-}
-
-async function mapWithConcurrency(items,limit,fn){
-  const results=new Array(items.length);
-  let idx=0;
-  async function worker(){
-    while(idx<items.length){
-      const i=idx++;
-      results[i]=await fn(items[i],i);
-    }
-  }
-  const workers=Array.from({length:Math.min(limit,items.length)},worker);
-  await Promise.all(workers);
-  return results;
 }
 
 // ============================
@@ -2360,7 +2461,7 @@ async function buildExportZip(setStatus,setProgress){
   zip.file('photos.prj',buildPRJ());
   zip.file('photos.cpg','UTF-8');
   setStatus('Création du projet QGIS…');
-  zip.file('projet_photos.qgs',buildQGSProject(pts));
+  zip.file('projet_photos.qgs',buildQGSProject(pts,getProjectTitle()));
   setStatus('Ajout des photos…');
   geo.forEach((p,i)=>phF.file(pts[i].photoFile,p.blob));
   zip.file('LISEZ-MOI.txt',
@@ -2398,13 +2499,20 @@ async function buildExportZip(setStatus,setProgress){
   });
 }
 
+// Nom de fichier court dérivé du titre de projet (Client - Ville), ou "photos" par défaut.
+function exportFileSlug(){
+  const t=getProjectTitle();
+  if(t==='Photos géolocalisées')return 'photos';
+  return sanitizeFilename(t).replace(/\s+/g,'_');
+}
+
 $('#btnExport').addEventListener('click',async()=>{
   const btn=$('#btnExport'),st=$('#exportStatus'),barWrap=$('#exportBarWrap'),bar=$('#exportBar');
   btn.disabled=true;btn.textContent='⏳ Génération…';
   barWrap.classList.remove('hidden');bar.style.width='0';
   try{
     const blob=await buildExportZip(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='export_qgis_photos.zip';a.click();
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='export_qgis_'+exportFileSlug()+'.zip';a.click();
     bar.style.width='100%';
     st.textContent='✓ Export terminé !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
@@ -2419,7 +2527,7 @@ $('#btnExportEmail').addEventListener('click',async()=>{
     const blob=await buildExportZip(msg=>st.textContent=msg,pct=>bar.style.width=pct+'%');
     bar.style.width='100%';
     st.textContent='Ouverture du partage…';
-    await shareOrEmailFile(blob,'export_qgis_photos.zip','Export QGIS - Photos géolocalisées','Voici l\'export QGIS (projet + GeoJSON + Shapefile + photos).');
+    await shareOrEmailFile(blob,'export_qgis_'+exportFileSlug()+'.zip','Export QGIS - '+getProjectTitle(),'Voici l\'export QGIS (projet + GeoJSON + Shapefile + photos).');
     st.textContent='✓ Prêt !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
   btn.disabled=false;btn.textContent=orig;
@@ -2442,22 +2550,22 @@ function loadImageElement(blob){
 // pas un vrai fond de carte — évite toute dépendance à des tuiles distantes)
 // avec les positions numérotées. Pages suivantes (portrait) : photos en 2
 // colonnes, numéro + titre, dans le même ordre de numérotation que le plan.
-async function buildPhotoReportPDF(points,setStatus){
+async function buildPhotoReportPDF(points,setStatus,projectTitle){
+  projectTitle=projectTitle||'Photos géolocalisées';
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  doc.setProperties({title:projectTitle});
   const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();
   const margin=15;
 
   setStatus('Création du plan de localisation…');
   doc.setFont('helvetica','bold');doc.setFontSize(18);
-  doc.text('Plan de localisation des photos',pw/2,margin,{align:'center'});
+  doc.text(projectTitle+' — Plan de localisation des photos',pw/2,margin,{align:'center'});
   doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(110);
   doc.text('Généré le '+new Date().toLocaleDateString('fr-FR')+' — '+points.length+' photo'+(points.length>1?'s':'')+' géolocalisée'+(points.length>1?'s':''),pw/2,margin+7,{align:'center'});
   doc.setTextColor(0);
 
   const planX=margin,planY=margin+16,planW=pw-margin*2,planH=ph-margin-planY;
-  doc.setDrawColor(190);doc.setLineWidth(0.3);
-  doc.rect(planX,planY,planW,planH);
 
   let lonMin=Infinity,lonMax=-Infinity,latMin=Infinity,latMax=-Infinity;
   points.forEach(p=>{if(p.lon<lonMin)lonMin=p.lon;if(p.lon>lonMax)lonMax=p.lon;if(p.lat<latMin)latMin=p.lat;if(p.lat>latMax)latMax=p.lat;});
@@ -2465,15 +2573,41 @@ async function buildPhotoReportPDF(points,setStatus){
   if(latMin===latMax){latMin-=0.001;latMax+=0.001;}
   const padLon=(lonMax-lonMin)*0.15,padLat=(latMax-latMin)*0.15;
   lonMin-=padLon;lonMax+=padLon;latMin-=padLat;latMax+=padLat;
-  const meanLat=(latMin+latMax)/2;
-  const kx=Math.max(Math.cos(meanLat*Math.PI/180),0.05); // correction longitude→distance
-  const spanX=(lonMax-lonMin)*kx,spanY=(latMax-latMin);
-  const innerMargin=14;
-  const scale=Math.min((planW-innerMargin*2)/spanX,(planH-innerMargin*2)/spanY);
-  const usedW=spanX*scale,usedH=spanY*scale;
-  const offX=planX+(planW-usedW)/2,offY=planY+(planH-usedH)/2;
+
+  // Projection Web Mercator (comme un vrai fond de carte), étendue élargie pour
+  // correspondre exactement au ratio largeur/hauteur du cadre du plan — l'image
+  // du fond IGN (si récupérée) pourra ainsi remplir tout le cadre sans déformation.
+  let [mxMin,myMin]=toWebMercator(lonMin,latMin);
+  let [mxMax,myMax]=toWebMercator(lonMax,latMax);
+  const boxRatio=planW/planH;
+  if((mxMax-mxMin)/(myMax-myMin)<boxRatio){
+    const newSpanX=(myMax-myMin)*boxRatio,cx=(mxMin+mxMax)/2;
+    mxMin=cx-newSpanX/2;mxMax=cx+newSpanX/2;
+  }else{
+    const newSpanY=(mxMax-mxMin)/boxRatio,cy=(myMin+myMax)/2;
+    myMin=cy-newSpanY/2;myMax=cy+newSpanY/2;
+  }
+  const [lonMinAdj,latMinAdj]=fromWebMercator(mxMin,myMin);
+  const [lonMaxAdj,latMaxAdj]=fromWebMercator(mxMax,myMax);
+
+  setStatus('Recherche d\'une connexion pour le fond de carte IGN…');
+  const basemap=await tryFetchIgnBasemap(lonMinAdj,latMinAdj,lonMaxAdj,latMaxAdj);
+  if(basemap){
+    doc.addImage(basemap,'JPEG',planX,planY,planW,planH);
+    doc.setFillColor(0,0,0);
+    doc.rect(planX,planY+planH-6,72,6,'F');
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(255);
+    doc.text('Fond de carte : IGN Géoplateforme (data.geopf.fr)',planX+2,planY+planH-2);
+    doc.setTextColor(0);
+  }else{
+    doc.setFillColor(255);doc.rect(planX,planY,planW,planH,'F');
+  }
+  doc.setDrawColor(190);doc.setLineWidth(0.3);
+  doc.rect(planX,planY,planW,planH);
+
   function project(lon,lat){
-    return [offX+(lon-lonMin)*kx*scale,offY+(latMax-lat)*scale];
+    const [mx,my]=toWebMercator(lon,lat);
+    return [planX+(mx-mxMin)/(mxMax-mxMin)*planW,planY+(myMax-my)/(myMax-myMin)*planH];
   }
 
   points.forEach((p,i)=>{
@@ -2549,8 +2683,8 @@ $('#btnExportPdf').addEventListener('click',async()=>{
   if(!geo.length){alert('Aucune photo géolocalisée et compressée à inclure dans le compte-rendu.');return;}
   btn.disabled=true;btn.textContent='⏳ Génération…';
   try{
-    const doc=await buildPhotoReportPDF(geo,msg=>st.textContent=msg);
-    doc.save('compte-rendu-photos.pdf');
+    const doc=await buildPhotoReportPDF(geo,msg=>st.textContent=msg,getProjectTitle());
+    doc.save('compte-rendu-'+exportFileSlug()+'.pdf');
     st.textContent='✓ Compte-rendu généré !';
   }catch(e){console.error(e);alert('Erreur: '+e.message);st.textContent='Erreur.';}
   btn.disabled=false;btn.textContent=orig;
