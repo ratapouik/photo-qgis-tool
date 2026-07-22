@@ -654,35 +654,46 @@ function lonLatToTileXY(lon,lat,z){
   const y=(1-Math.log(Math.tan(latRad)+1/Math.cos(latRad))/Math.PI)/2*n;
   return [x,y];
 }
-// Choisit le zoom le plus élevé (meilleure résolution) tel que la mosaïque de
-// tuiles nécessaire pour couvrir l'étendue reste raisonnable (limite le nombre
-// de requêtes réseau). Bornes 6-19 : plage disponible pour l'orthophoto IGN.
-function pickIgnZoom(lonMin,latMin,lonMax,latMax,maxTiles){
-  maxTiles=maxTiles||48;
-  for(let z=19;z>=6;z--){
-    const [x0,y0]=lonLatToTileXY(lonMin,latMax,z);
-    const [x1,y1]=lonLatToTileXY(lonMax,latMin,z);
-    const nx=Math.floor(x1)-Math.floor(x0)+1,ny=Math.floor(y1)-Math.floor(y0)+1;
-    if(nx>0&&ny>0&&nx*ny<=maxTiles)return z;
-  }
-  return 6;
+// Choisit le zoom nécessaire pour que la mosaïque de tuiles fournisse au moins
+// la résolution demandée (en pixels, pour la taille d'impression visée) —
+// plutôt que de réduire le zoom pour limiter le nombre de tuiles (ce qui
+// pixeliserait l'image une fois étirée sur le cadre). "minZoom" garantit un
+// niveau de détail plancher ; "maxZoom" est la limite de l'orthophoto IGN (19).
+function pickZoomForSpan(mercSpan,targetPixels,minZoom,maxZoom){
+  const worldMerc=2*Math.PI*6378137; // circonférence terrestre en mètres Web Mercator
+  const needed=Math.ceil(Math.log2((worldMerc*targetPixels)/(256*mercSpan)));
+  return Math.max(minZoom,Math.min(maxZoom,needed));
 }
 // Tente de composer une image du fond de carte IGN (orthophotos) pour la bbox
-// donnée (EPSG:4326). Renvoie un canvas prêt pour doc.addImage(), ou null si la
-// connexion échoue, si le service ne répond pas avec des en-têtes CORS
-// permissifs (canvas "taché"), ou si l'utilisateur est hors ligne — dans tous
-// les cas on retombe silencieusement sur le plan schématique existant.
-async function tryFetchIgnBasemap(lonMin,latMin,lonMax,latMax){
+// donnée (EPSG:4326) au zoom demandé. Renvoie un canvas prêt pour doc.addImage(),
+// ou null si la connexion échoue, si le service ne répond pas avec des en-têtes
+// CORS permissifs (canvas "taché"), ou si l'utilisateur est hors ligne — dans
+// tous les cas on retombe silencieusement sur le plan schématique existant.
+async function tryFetchIgnBasemap(lonMin,latMin,lonMax,latMax,zoom,maxTiles,minZoom){
   if(typeof navigator!=='undefined'&&navigator.onLine===false)return null;
+  maxTiles=maxTiles||140;
+  const HARD_MAX_TILES=420; // garde-fou absolu, même pour rester au zoom minimal demandé
   try{
     const TILE=256;
-    const z=pickIgnZoom(lonMin,latMin,lonMax,latMax);
-    const [xMinF,yMinF]=lonLatToTileXY(lonMin,latMax,z);
-    const [xMaxF,yMaxF]=lonLatToTileXY(lonMax,latMin,z);
-    const xTile0=Math.floor(xMinF),xTile1=Math.floor(xMaxF);
-    const yTile0=Math.floor(yMinF),yTile1=Math.floor(yMaxF);
-    const nx=xTile1-xTile0+1,ny=yTile1-yTile0+1;
-    if(nx<=0||ny<=0||nx*ny>80)return null;
+    let z=zoom;
+    let xMinF,yMinF,xMaxF,yMaxF,xTile0,xTile1,yTile0,yTile1,nx,ny;
+    // Si le nombre de tuiles au zoom demandé dépasse le plafond de sécurité,
+    // on réduit le zoom pas à pas (cas extrême : emprise très large) plutôt
+    // que de renoncer — la priorité reste d'afficher un fond de carte. On ne
+    // descend en revanche jamais sous minZoom (résolution minimale imposée par
+    // l'appelant pour éviter la pixélisation) : au-delà, mieux vaut un repli
+    // complet sur le plan schématique qu'un fond de carte flou.
+    do{
+      [xMinF,yMinF]=lonLatToTileXY(lonMin,latMax,z);
+      [xMaxF,yMaxF]=lonLatToTileXY(lonMax,latMin,z);
+      xTile0=Math.floor(xMinF);xTile1=Math.floor(xMaxF);
+      yTile0=Math.floor(yMinF);yTile1=Math.floor(yMaxF);
+      nx=xTile1-xTile0+1;ny=yTile1-yTile0+1;
+      if(nx*ny<=maxTiles)break;
+      if(minZoom!=null&&z<=minZoom)break;
+      z--;
+    }while(z>=6);
+    if(nx<=0||ny<=0||z<6||nx*ny>HARD_MAX_TILES)return null;
 
     const tiles=[];
     for(let ty=0;ty<ny;ty++)for(let tx=0;tx<nx;tx++)tiles.push({tx,ty,col:xTile0+tx,row:yTile0+ty});
@@ -2419,22 +2430,129 @@ function loadImageElement(blob){
 // pas un vrai fond de carte — évite toute dépendance à des tuiles distantes)
 // avec les positions numérotées. Pages suivantes (portrait) : photos en 2
 // colonnes, numéro + titre, dans le même ordre de numérotation que le plan.
+// Palette du compte-rendu (RVB), cohérente avec l'identité visuelle de l'outil.
+const PDF_COL_DARK=[16,17,20],PDF_COL_GREEN=[52,199,89],PDF_COL_BLUE=[41,182,246],PDF_COL_RED=[214,40,40];
+
+// Échelle graphique (barre segmentée + longueur "ronde" adaptée à l'étendue affichée).
+function drawScaleBar(doc,x,y,spanMeters,planWmm){
+  const mPerMm=spanMeters/planWmm;
+  const idealLenM=mPerMm*(planWmm*0.22);
+  const niceSteps=[1,2,5,10,20,25,50,100,200,250,500,1000,2000,5000,10000,20000,50000,100000];
+  let lenM=niceSteps[0];
+  for(const s of niceSteps){if(s<=idealLenM)lenM=s;else break;}
+  const lenMm=lenM/mPerMm,half=lenMm/2,barH=1.6;
+  doc.setFillColor(255);doc.rect(x-2,y-6,lenMm+4,10,'F');
+  doc.setDrawColor(30);doc.setLineWidth(0.2);
+  doc.setFillColor(30);doc.rect(x,y,half,barH,'F');
+  doc.setFillColor(255);doc.rect(x+half,y,half,barH,'FD');
+  doc.rect(x,y,lenMm,barH);
+  doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(30);
+  doc.text('0',x,y-1);
+  doc.text(lenM>=1000?(lenM/1000)+' km':lenM+' m',x+lenMm,y-1,{align:'right'});
+  doc.setTextColor(0);
+}
+
+// Choisit le coin (haut-droite ou bas-droite) le moins susceptible de recouvrir
+// une photo du plan pour y placer l'encart de situation générale (le coin
+// haut-gauche est réservé à la flèche du nord, le bas-gauche à l'échelle).
+function pickInsetCorner(points,project,planX,planY,planW,planH,insetW,insetH){
+  const candidates=[
+    {x:planX+planW-insetW,y:planY},
+    {x:planX+planW-insetW,y:planY+planH-insetH},
+  ];
+  let best=candidates[0],bestCount=Infinity;
+  candidates.forEach(c=>{
+    let count=0;
+    points.forEach(p=>{
+      const [x,y]=project(p.lon,p.lat);
+      if(x>=c.x&&x<=c.x+insetW&&y>=c.y&&y<=c.y+insetH)count++;
+    });
+    if(count<bestCount){bestCount=count;best=c;}
+  });
+  return best;
+}
+
+// Encart "situation générale" : vue IGN large autour du site, avec un rectangle
+// rouge indiquant l'emprise de la carte de localisation détaillée. Ne dessine
+// rien si la connexion échoue (pas d'encart à moitié vide).
+async function drawOverviewInset(doc,corner,insetW,insetH,mxMin,myMin,mxMax,myMax){
+  const {x:insetX,y:insetY}=corner;
+  const detailCenterMx=(mxMin+mxMax)/2,detailCenterMy=(myMin+myMax)/2;
+  const factor=14;
+  let ovSpanX=Math.min(35000,Math.max(2500,(mxMax-mxMin)*factor));
+  let ovSpanY=Math.min(35000,Math.max(2500,(myMax-myMin)*factor));
+  const ratio=insetW/insetH;
+  if(ovSpanX/ovSpanY<ratio)ovSpanX=ovSpanY*ratio;else ovSpanY=ovSpanX/ratio;
+  const ovMxMin=detailCenterMx-ovSpanX/2,ovMxMax=detailCenterMx+ovSpanX/2;
+  const ovMyMin=detailCenterMy-ovSpanY/2,ovMyMax=detailCenterMy+ovSpanY/2;
+  const [ovLonMin,ovLatMin]=fromWebMercator(ovMxMin,ovMyMin);
+  const [ovLonMax,ovLatMax]=fromWebMercator(ovMxMax,ovMyMax);
+
+  const targetPxW=insetW/25.4*130,targetPxH=insetH/25.4*130;
+  const ovZoom=Math.max(
+    pickZoomForSpan(ovSpanX,targetPxW,10,16),
+    pickZoomForSpan(ovSpanY,targetPxH,10,16)
+  );
+  const overview=await tryFetchIgnBasemap(ovLonMin,ovLatMin,ovLonMax,ovLatMax,ovZoom,90,10);
+  if(!overview)return;
+
+  doc.setFillColor(210);
+  doc.roundedRect(insetX+0.8,insetY+1,insetW,insetH,1.5,1.5,'F');
+  doc.addImage(overview,'JPEG',insetX,insetY,insetW,insetH);
+  doc.setDrawColor(40);doc.setLineWidth(0.5);
+  doc.rect(insetX,insetY,insetW,insetH);
+
+  function projInset(mx,my){
+    return [insetX+(mx-ovMxMin)/(ovMxMax-ovMxMin)*insetW,insetY+(ovMyMax-my)/(ovMyMax-ovMyMin)*insetH];
+  }
+  const [rx0,ry0]=projInset(mxMin,myMax),[rx1,ry1]=projInset(mxMax,myMin);
+  doc.setDrawColor(...PDF_COL_RED);doc.setLineWidth(0.7);
+  doc.rect(Math.min(rx0,rx1),Math.min(ry0,ry1),Math.max(0.6,Math.abs(rx1-rx0)),Math.max(0.6,Math.abs(ry1-ry0)));
+
+  doc.setFillColor(255);
+  doc.rect(insetX,insetY,insetW,5,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(30);
+  doc.text('Situation générale',insetX+insetW/2,insetY+3.5,{align:'center'});
+  doc.setTextColor(0);
+}
+
+// En-tête (bandeau + filet coloré) répété sur chaque page de photos.
+function drawPhotoPageHeader(doc,pw,margin,projectTitle){
+  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(30);
+  doc.text(projectTitle,margin,margin-3);
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(140);
+  doc.text('Photos géolocalisées',pw-margin,margin-3,{align:'right'});
+  doc.setDrawColor(...PDF_COL_GREEN);doc.setLineWidth(0.8);
+  doc.line(margin,margin,pw-margin,margin);
+  doc.setTextColor(0);
+  return margin+7;
+}
+
 async function buildPhotoReportPDF(points,setStatus,projectTitle){
   projectTitle=projectTitle||'Photos géolocalisées';
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
   doc.setProperties({title:projectTitle});
   const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();
-  const margin=15;
+  const margin=12;
 
   setStatus('Création du plan de localisation…');
-  doc.setFont('helvetica','bold');doc.setFontSize(18);
-  doc.text(projectTitle+' — Plan de localisation des photos',pw/2,margin,{align:'center'});
-  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(110);
-  doc.text('Généré le '+new Date().toLocaleDateString('fr-FR')+' — '+points.length+' photo'+(points.length>1?'s':'')+' géolocalisée'+(points.length>1?'s':''),pw/2,margin+7,{align:'center'});
+
+  // ---- Bandeau d'en-tête ----
+  const headerH=24;
+  doc.setFillColor(...PDF_COL_DARK);doc.rect(0,0,pw,headerH,'F');
+  doc.setDrawColor(...PDF_COL_GREEN);doc.setLineWidth(1.2);doc.line(0,headerH,pw,headerH);
+  doc.setFont('helvetica','bold');doc.setFontSize(17);doc.setTextColor(255);
+  doc.text(projectTitle,margin,13);
+  doc.setFont('helvetica','normal');doc.setFontSize(10.5);doc.setTextColor(205);
+  doc.text('Plan de localisation des photos',margin,19.5);
+  doc.setFontSize(9);doc.setTextColor(205);
+  doc.text('Généré le '+new Date().toLocaleDateString('fr-FR'),pw-margin,11,{align:'right'});
+  doc.text(points.length+' photo'+(points.length>1?'s':'')+' géolocalisée'+(points.length>1?'s':''),pw-margin,17,{align:'right'});
   doc.setTextColor(0);
 
-  const planX=margin,planY=margin+16,planW=pw-margin*2,planH=ph-margin-planY;
+  const footerReserve=20;
+  const planY=headerH+9,planX=margin,planW=pw-margin*2,planH=ph-planY-footerReserve;
 
   let lonMin=Infinity,lonMax=-Infinity,latMin=Infinity,latMax=-Infinity;
   points.forEach(p=>{if(p.lon<lonMin)lonMin=p.lon;if(p.lon>lonMax)lonMax=p.lon;if(p.lat<latMin)latMin=p.lat;if(p.lat>latMax)latMax=p.lat;});
@@ -2459,19 +2577,26 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const [lonMinAdj,latMinAdj]=fromWebMercator(mxMin,myMin);
   const [lonMaxAdj,latMaxAdj]=fromWebMercator(mxMax,myMax);
 
+  // Zoom calculé pour que le fond de carte fournisse au moins la résolution
+  // d'impression visée (200 dpi) — jamais dégradé pour économiser des tuiles.
+  const targetDPI=200;
+  const targetPxW=planW/25.4*targetDPI,targetPxH=planH/25.4*targetDPI;
+  const zoom=Math.max(
+    pickZoomForSpan(mxMax-mxMin,targetPxW,17,19),
+    pickZoomForSpan(myMax-myMin,targetPxH,17,19)
+  );
+
   setStatus('Recherche d\'une connexion pour le fond de carte IGN…');
-  const basemap=await tryFetchIgnBasemap(lonMinAdj,latMinAdj,lonMaxAdj,latMaxAdj);
+  const basemap=await tryFetchIgnBasemap(lonMinAdj,latMinAdj,lonMaxAdj,latMaxAdj,zoom,140,17);
+
+  doc.setFillColor(205);
+  doc.roundedRect(planX+1,planY+1.4,planW,planH,1.5,1.5,'F');
   if(basemap){
     doc.addImage(basemap,'JPEG',planX,planY,planW,planH);
-    doc.setFillColor(0,0,0);
-    doc.rect(planX,planY+planH-6,72,6,'F');
-    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(255);
-    doc.text('Fond de carte : IGN Géoplateforme (data.geopf.fr)',planX+2,planY+planH-2);
-    doc.setTextColor(0);
   }else{
-    doc.setFillColor(255);doc.rect(planX,planY,planW,planH,'F');
+    doc.setFillColor(250);doc.rect(planX,planY,planW,planH,'F');
   }
-  doc.setDrawColor(190);doc.setLineWidth(0.3);
+  doc.setDrawColor(60);doc.setLineWidth(0.5);
   doc.rect(planX,planY,planW,planH);
 
   function project(lon,lat){
@@ -2481,26 +2606,45 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
 
   points.forEach((p,i)=>{
     const [x,y]=project(p.lon,p.lat);
-    doc.setFillColor(41,182,246);doc.setDrawColor(20,80,120);doc.setLineWidth(0.25);
+    doc.setFillColor(255);doc.circle(x,y,4.2,'F');
+    doc.setFillColor(...PDF_COL_BLUE);doc.setDrawColor(20,80,120);doc.setLineWidth(0.3);
     doc.circle(x,y,3.4,'FD');
     doc.setTextColor(255);doc.setFontSize(7);doc.setFont('helvetica','bold');
     doc.text(String(i+1),x,y+1.1,{align:'center'});
   });
   doc.setTextColor(0);
 
-  // flèche du nord
-  const nx=planX+planW-12,ny=planY+16;
-  doc.setDrawColor(90);doc.setLineWidth(0.5);
-  doc.line(nx,ny+8,nx,ny-6);
-  doc.line(nx,ny-6,nx-2.2,ny-1.5);
-  doc.line(nx,ny-6,nx+2.2,ny-1.5);
-  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(60);
-  doc.text('N',nx,ny+12,{align:'center'});
+  // flèche du nord (haut-gauche du cadre)
+  const nx=planX+9,ny=planY+15;
+  doc.setFillColor(255);doc.circle(nx,ny+1,6,'F');
+  doc.setDrawColor(70);doc.setLineWidth(0.5);
+  doc.line(nx,ny+5,nx,ny-5);
+  doc.line(nx,ny-5,nx-2.2,ny-0.5);
+  doc.line(nx,ny-5,nx+2.2,ny-0.5);
+  doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(50);
+  doc.text('N',nx,ny+7.5,{align:'center'});
   doc.setTextColor(0);
 
-  // légende des numéros (liste compacte en bas du plan si la place le permet)
-  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(90);
-  doc.text('Les numéros correspondent aux photos des pages suivantes.',planX,planY+planH+7);
+  // échelle graphique (bas-gauche du cadre)
+  drawScaleBar(doc,planX+7,planY+planH-13,mxMax-mxMin,planW);
+
+  if(basemap){
+    doc.setFillColor(0,0,0);
+    doc.rect(planX,planY+planH-6,74,6,'F');
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(255);
+    doc.text('Fond de carte : IGN Géoplateforme (data.geopf.fr)',planX+2,planY+planH-2);
+    doc.setTextColor(0);
+  }
+
+  // encart "situation générale" (coin le moins gênant pour les photos)
+  setStatus('Création de la carte de situation générale…');
+  const insetW=54,insetH=42;
+  const corner=pickInsetCorner(points,project,planX,planY,planW,planH,insetW,insetH);
+  await drawOverviewInset(doc,corner,insetW,insetH,mxMin,myMin,mxMax,myMax);
+
+  // légende des numéros
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(110);
+  doc.text('Les numéros correspondent aux photos des pages suivantes.',planX,planY+planH+6);
   doc.setTextColor(0);
 
   // Pages photos : 2 colonnes, portrait
@@ -2509,7 +2653,7 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const colXs=[mp,mp+colW+gutter];
   const maxY=297-mp;
   doc.addPage('a4','portrait');
-  let cursorY=mp;
+  let cursorY=drawPhotoPageHeader(doc,210,mp,projectTitle);
 
   for(let i=0;i<points.length;i+=2){
     setStatus('Ajout des photos… '+(i+1)+'/'+points.length);
@@ -2521,26 +2665,44 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
       const imgH=colW*(img.naturalHeight/img.naturalWidth);
       loaded.push({p,img,url,imgH});
     }
-    const captionH=11;
+    const captionH=15;
     const rowH=Math.max(...loaded.map(l=>l.imgH))+captionH;
     if(cursorY+rowH>maxY){
       doc.addPage('a4','portrait');
-      cursorY=mp;
+      cursorY=drawPhotoPageHeader(doc,210,mp,projectTitle);
     }
     loaded.forEach((l,idx)=>{
       const x=colXs[idx],num=i+idx+1;
+      doc.setFillColor(215);
+      doc.roundedRect(x+1,cursorY+1.3,colW,l.imgH,1.2,1.2,'F');
       doc.addImage(l.img,'JPEG',x,cursorY,colW,l.imgH);
-      doc.setDrawColor(210);doc.setLineWidth(0.2);
+      doc.setDrawColor(200);doc.setLineWidth(0.25);
       doc.rect(x,cursorY,colW,l.imgH);
-      doc.setFillColor(41,182,246);doc.setDrawColor(20,80,120);
-      doc.circle(x+4.2,cursorY+4.2,3.6,'FD');
-      doc.setTextColor(255);doc.setFontSize(7.5);doc.setFont('helvetica','bold');
-      doc.text(String(num),x+4.2,cursorY+5.4,{align:'center'});
-      doc.setTextColor(30);doc.setFont('helvetica','bold');doc.setFontSize(9.5);
+      doc.setFillColor(...PDF_COL_BLUE);doc.setDrawColor(20,80,120);doc.setLineWidth(0.3);
+      doc.circle(x+5,cursorY+5,4,'FD');
+      doc.setTextColor(255);doc.setFontSize(8);doc.setFont('helvetica','bold');
+      doc.text(String(num),x+5,cursorY+6.3,{align:'center'});
+      doc.setTextColor(20);doc.setFont('helvetica','bold');doc.setFontSize(9.5);
       doc.text(l.p.displayName,x,cursorY+l.imgH+5.5,{maxWidth:colW});
+      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(130);
+      doc.text('N '+l.p.lat.toFixed(5)+'  E '+l.p.lon.toFixed(5),x,cursorY+l.imgH+9.7,{maxWidth:colW});
+      doc.setTextColor(0);
       URL.revokeObjectURL(l.url);
     });
     cursorY+=rowH+gutter;
+  }
+
+  // Pied de page (numérotation) sur l'ensemble du document
+  const totalPages=doc.internal.getNumberOfPages();
+  for(let i=1;i<=totalPages;i++){
+    doc.setPage(i);
+    const w=doc.internal.pageSize.getWidth(),h=doc.internal.pageSize.getHeight();
+    doc.setDrawColor(220);doc.setLineWidth(0.2);
+    doc.line(12,h-9,w-12,h-9);
+    doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(140);
+    doc.text(projectTitle,12,h-5);
+    doc.text('Page '+i+'/'+totalPages,w-12,h-5,{align:'right'});
+    doc.setTextColor(0);
   }
 
   return doc;
