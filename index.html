@@ -448,7 +448,7 @@ function isImageFile(file){
 // Renvoie {lat,lon,alt,takenAt} — s'appuie sur exifr (robuste, gère JPEG/HEIC/TIFF,
 // ne bloque jamais même sur fichier corrompu grâce au try/catch).
 async function readMeta(file){
-  const out={lat:null,lon:null,alt:null,takenAt:null};
+  const out={lat:null,lon:null,alt:null,takenAt:null,bearing:null};
   try{
     // Note: on n'utilise pas l'option "pick" d'exifr : elle filtre aussi les valeurs
     // calculées (latitude/longitude), pas seulement les tags bruts, et casserait la
@@ -464,6 +464,8 @@ async function readMeta(file){
       if(ref&&typeof ref==='object'&&typeof ref[0]!=='undefined')ref=ref[0];
       out.alt=ref===1?-o.GPSAltitude:o.GPSAltitude;
     }
+    // Cap de prise de vue (0°=nord, sens horaire), quand l'appareil l'a enregistré.
+    if(typeof o.GPSImgDirection==='number')out.bearing=((o.GPSImgDirection%360)+360)%360;
     const d=o.DateTimeOriginal||o.CreateDate;
     if(d instanceof Date&&!isNaN(d))out.takenAt=d;
   }catch(e){/* fichier illisible : on garde les valeurs par défaut, jamais de blocage */}
@@ -1788,8 +1790,40 @@ function gpsQuality(acc){
   return{label:'Précision faible — déplacez-vous à découvert si possible',cls:'bad'};
 }
 let gpsWatchId=null;
+
+// ---- Cap boussole (best-effort, jamais bloquant) : capté pendant que l'utilisateur
+// patiente sur le précheck GPS, pour orienter le cône de direction sur le plan PDF
+// quand la photo elle-même n'enregistre pas de cap EXIF (GPSImgDirection). ----
+let compassHandler=null,lastHeading=null;
+function stopCompassWatch(){
+  if(compassHandler){
+    window.removeEventListener('deviceorientationabsolute',compassHandler);
+    window.removeEventListener('deviceorientation',compassHandler);
+    compassHandler=null;
+  }
+  lastHeading=null;
+}
+function startCompassWatch(){
+  stopCompassWatch();
+  compassHandler=e=>{
+    if(typeof e.webkitCompassHeading==='number')lastHeading=e.webkitCompassHeading;
+    else if(e.absolute&&typeof e.alpha==='number')lastHeading=(360-e.alpha)%360;
+  };
+  if('ondeviceorientationabsolute' in window)window.addEventListener('deviceorientationabsolute',compassHandler);
+  else window.addEventListener('deviceorientation',compassHandler);
+}
+async function requestCompassPermission(){
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+      return (await DeviceOrientationEvent.requestPermission())==='granted';
+    }
+    return true; // Android/desktop : pas de permission explicite à demander
+  }catch(e){return false;}
+}
+
 function closeGpsPrecheck(){
   if(gpsWatchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
+  stopCompassWatch();
   document.getElementById('gpsModalOverlay').classList.add('hidden');
 }
 // Affiche la fenêtre de précheck ; appelle onContinue(position|null) si l'utilisateur
@@ -1837,8 +1871,12 @@ function openGpsPrecheck(onContinue,onCancel){
       {enableHighAccuracy:true,maximumAge:0,timeout:20000}
     );
   }
+  requestCompassPermission().then(ok=>{if(ok)startCompassWatch();});
 
-  continueBtn.onclick=()=>{cleanup();onContinue(lastPosition);};
+  continueBtn.onclick=()=>{
+    const result=lastPosition?{...lastPosition,bearing:lastHeading}:null;
+    cleanup();onContinue(result);
+  };
   cancelBtn.onclick=()=>{cleanup();if(onCancel)onCancel();};
 }
 
@@ -1903,6 +1941,11 @@ async function addCameraPhoto(file){
         if(geo){meta.lat=geo.lat;meta.lon=geo.lon;meta.alt=geo.alt;}
       }
     }
+    // Cap : priorité au cap EXIF de la photo elle-même, sinon celui de la boussole
+    // captée pendant le précheck GPS (approximatif mais mieux que rien).
+    if(meta.bearing===null&&pendingCameraGeo&&typeof pendingCameraGeo.bearing==='number'){
+      meta.bearing=pendingCameraGeo.bearing;
+    }
     const renderable=await toRenderable(file);
     if(!renderable){alert('⚠ Cette photo n\'a pas pu être traitée.');return;}
     let preview;
@@ -1914,7 +1957,7 @@ async function addCameraPhoto(file){
     gisAll.push({
       id,name:label+'.jpg',displayName:label,ext:'.jpg',
       file,sourceBlob:renderable,
-      preview,selected:true,lat:meta.lat,lon:meta.lon,alt:meta.alt,hasGps:meta.lat!==null,
+      preview,selected:true,lat:meta.lat,lon:meta.lon,alt:meta.alt,bearing:meta.bearing,hasGps:meta.lat!==null,
       takenAt:ts,blob:null,compSize:0
     });
     buildSelectGrid();
@@ -1962,7 +2005,7 @@ async function loadFolder(fl){
     return {
       name:f.name,displayName:f.name.replace(/\.[^.]+$/,''),ext:'.jpg',
       file:f,sourceBlob:renderable,
-      preview,selected:true,lat:meta.lat,lon:meta.lon,alt:meta.alt,hasGps:meta.lat!==null,
+      preview,selected:true,lat:meta.lat,lon:meta.lon,alt:meta.alt,bearing:meta.bearing,hasGps:meta.lat!==null,
       takenAt:meta.takenAt,blob:null,compSize:0
     };
   });
@@ -2435,6 +2478,61 @@ function loadImageElement(blob){
 // Palette du compte-rendu (RVB), cohérente avec l'identité visuelle de l'outil.
 const PDF_COL_DARK=[16,17,20],PDF_COL_GREEN=[52,199,89],PDF_COL_BLUE=[41,182,246],PDF_COL_RED=[214,40,40];
 
+// Répartit les numéros qui se chevaucheraient visuellement (points GPS proches
+// vus à l'échelle du plan imprimé) en éventail autour de leur position réelle,
+// sans jamais déplacer le point réel : seul le badge numéroté est décalé, relié
+// par une ligne fine à un petit point marquant la position exacte.
+function computeLabelLayout(projected,planX,planY,planW,planH){
+  const n=projected.length;
+  const badgeDiam=8.5; // Ø visuel du badge (halo blanc inclus) : seuil de chevauchement
+  const parent=Array.from({length:n},(_,i)=>i);
+  function find(a){while(parent[a]!==a){parent[a]=parent[parent[a]];a=parent[a];}return a;}
+  function union(a,b){const ra=find(a),rb=find(b);if(ra!==rb)parent[ra]=rb;}
+  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
+    if(Math.hypot(projected[i].x-projected[j].x,projected[i].y-projected[j].y)<badgeDiam)union(i,j);
+  }
+  const groups={};
+  for(let i=0;i<n;i++){const r=find(i);(groups[r]=groups[r]||[]).push(i);}
+
+  const margin=8;
+  const minX=planX+margin,maxX=planX+planW-margin,minY=planY+margin,maxY=planY+planH-margin;
+  const out=new Array(n);
+  Object.values(groups).forEach(idxs=>{
+    if(idxs.length===1){
+      const i=idxs[0];
+      out[i]={x:projected[i].x,y:projected[i].y,offset:false};
+      return;
+    }
+    const cx=idxs.reduce((s,i)=>s+projected[i].x,0)/idxs.length;
+    const cy=idxs.reduce((s,i)=>s+projected[i].y,0)/idxs.length;
+    const r=Math.max(5.5,badgeDiam/(2*Math.sin(Math.PI/idxs.length)));
+    idxs.forEach((i,k)=>{
+      const angle=-Math.PI/2+(2*Math.PI*k)/idxs.length;
+      const x=Math.min(maxX,Math.max(minX,cx+r*Math.cos(angle)));
+      const y=Math.min(maxY,Math.max(minY,cy+r*Math.sin(angle)));
+      out[i]={x,y,offset:true};
+    });
+  });
+  return out;
+}
+
+// Cône de direction de prise de vue (semi-transparent), quand le cap est connu
+// (EXIF GPSImgDirection ou boussole de l'appareil au moment de la capture).
+// bearingDeg : 0°=nord, sens horaire — 0° pointe donc vers le haut du plan
+// (nord en haut, comme le reste du plan, projeté en Web Mercator non tourné).
+function drawDirectionCone(doc,x,y,bearingDeg,len){
+  const halfAngle=24*Math.PI/180;
+  const bearingRad=bearingDeg*Math.PI/180;
+  const leftRad=bearingRad-halfAngle,rightRad=bearingRad+halfAngle;
+  const lx=x+len*Math.sin(leftRad),ly=y-len*Math.cos(leftRad);
+  const rx=x+len*Math.sin(rightRad),ry=y-len*Math.cos(rightRad);
+  doc.saveGraphicsState();
+  doc.setGState(new doc.GState({opacity:0.38}));
+  doc.setFillColor(...PDF_COL_BLUE);
+  doc.triangle(x,y,lx,ly,rx,ry,'F');
+  doc.restoreGraphicsState();
+}
+
 // Flèche du nord : cercle, triangle plein pointant vers le haut, lettre N
 // au-dessus — dessinée en vectoriel (net à toute résolution d'impression,
 // jamais pixelisée) plutôt qu'en image bitmap importée.
@@ -2619,8 +2717,24 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
     return [planX+(mx-mxMin)/(mxMax-mxMin)*planW,planY+(myMax-my)/(myMax-myMin)*planH];
   }
 
+  const projected=points.map(p=>{const [x,y]=project(p.lon,p.lat);return {x,y};});
+  const labels=computeLabelLayout(projected,planX,planY,planW,planH);
+
+  // Cônes de direction de prise de vue (sous les badges), à la position réelle.
   points.forEach((p,i)=>{
-    const [x,y]=project(p.lon,p.lat);
+    if(typeof p.bearing==='number')drawDirectionCone(doc,projected[i].x,projected[i].y,p.bearing,11);
+  });
+
+  // Lignes de rappel + point exact pour les badges décalés (chevauchement évité).
+  labels.forEach((l,i)=>{
+    if(!l.offset)return;
+    doc.setDrawColor(120);doc.setLineWidth(0.25);
+    doc.line(projected[i].x,projected[i].y,l.x,l.y);
+    doc.setFillColor(20);doc.circle(projected[i].x,projected[i].y,0.7,'F');
+  });
+
+  points.forEach((p,i)=>{
+    const {x,y}=labels[i];
     doc.setFillColor(255);doc.circle(x,y,4.2,'F');
     doc.setFillColor(...PDF_COL_BLUE);doc.setDrawColor(20,80,120);doc.setLineWidth(0.3);
     doc.circle(x,y,3.4,'FD');
@@ -2649,9 +2763,12 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const corner=pickInsetCorner(points,project,planX,planY,planW,planH,insetW,insetH);
   await drawOverviewInset(doc,corner,insetW,insetH,mxMin,myMin,mxMax,myMax);
 
-  // légende des numéros
+  // légende des numéros (+ mention du cône de direction si au moins une photo a un cap connu)
+  const hasBearing=points.some(p=>typeof p.bearing==='number');
   doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(110);
-  doc.text('Les numéros correspondent aux photos des pages suivantes.',planX,planY+planH+6);
+  doc.text('Les numéros correspondent aux photos des pages suivantes.'
+    +(hasBearing?' Le cône bleu indique la direction de prise de vue (si connue).':''),
+    planX,planY+planH+6);
   doc.setTextColor(0);
 
   // Pages photos : 2 colonnes, portrait
