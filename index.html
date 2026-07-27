@@ -2448,20 +2448,125 @@ function loadImageElement(blob){
   });
 }
 
-// Page 1 (paysage) : plan schématique (projection équirectangulaire locale,
-// pas un vrai fond de carte — évite toute dépendance à des tuiles distantes)
-// avec les positions numérotées. Pages suivantes (portrait) : photos en 2
-// colonnes, numéro + titre, dans le même ordre de numérotation que le plan.
-// Palette du compte-rendu (RVB), cohérente avec l'identité visuelle de l'outil.
-const PDF_COL_DARK=[16,17,20],PDF_COL_GREEN=[52,199,89],PDF_COL_BLUE=[41,182,246],PDF_COL_RED=[214,40,40];
+// ============================================================
+// COMPTE-RENDU PHOTOGRAPHIQUE — CHARTE GRAPHIQUE
+// ============================================================
+// Deux rôles de couleur nettement séparés, comme sur un plan d'ingénierie :
+//   « chrome » (accent)  → structure du document : filets, étiquettes de bloc ;
+//   « data »             → tout ce qui porte l'information relevée : repères
+//                          numérotés et emprise du plan. Une seule teinte,
+//                          très lisible sur orthophoto, reprise à l'identique
+//                          sur les fiches photo pour que la correspondance
+//                          numéro ↔ photo soit immédiate.
+// Les teintes sont plus sourdes que celles de l'interface écran : les verts et
+// bleus fluo de l'app passent mal à l'impression.
+const RP={
+  ink:[17,21,27],        // titres
+  inkSoft:[74,84,96],    // texte courant
+  muted:[134,144,155],   // texte secondaire
+  hair:[214,220,227],    // filets
+  panel:[246,248,250],   // fonds de bloc
+  paper:[255,255,255],
+  accent:[13,124,102],   // chrome
+  data:[209,62,36],      // repères + emprise
+  dataDark:[142,38,20]
+};
+const RP_F='helvetica';
 
-// Répartit les numéros qui se chevaucheraient visuellement (points GPS proches
+function rpThousands(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
+function rpLen(v){
+  const r=Number(v.toFixed(1));
+  return v>=1000?(Number((v/1000).toFixed(1))+' km'):(r+' m');
+}
+
+// Texte interlettré. Attention : jsPDF ignore setCharSpace aussi bien dans
+// getTextWidth que dans son propre alignement (align:'right'/'center'), ce qui
+// pousse le texte hors de la marge. On mesure donc la largeur réelle — le
+// tracking s'applique entre les caractères, soit n-1 intervalles, en unités du
+// document (vérifié au pixel) — et on positionne à la main.
+function rpTracked(doc,text,x,y,spacing,align){
+  const w=doc.getTextWidth(text)+spacing*Math.max(0,text.length-1);
+  let dx=0;
+  if(align==='right')dx=-w;else if(align==='center')dx=-w/2;
+  doc.setCharSpace(spacing);
+  doc.text(text,x+dx,y);
+  doc.setCharSpace(0);
+  return w;
+}
+
+// Étiquette de bloc : petites capitales interlettrées + filet de soulignement.
+// Renvoie l'ordonnée où le contenu du bloc peut commencer.
+function rpLabel(doc,text,x,y,w){
+  doc.setFont(RP_F,'bold');doc.setFontSize(6.2);doc.setTextColor(...RP.accent);
+  rpTracked(doc,text.toUpperCase(),x,y,0.55);
+  doc.setDrawColor(...RP.accent);doc.setLineWidth(0.35);
+  doc.line(x,y+1.5,x+w,y+1.5);
+  doc.setTextColor(0);
+  return y+6.4;
+}
+
+// Repère numéroté — dessin strictement identique sur le plan et sur les fiches
+// photo : c'est ce qui permet de relier une photo à sa position d'un coup d'œil.
+// Halo blanc systématique : reste lisible sur n'importe quel fond aérien.
+function rpMarker(doc,x,y,label,r){
+  const fs=r*1.85;
+  doc.setFillColor(...RP.paper);doc.circle(x,y,r+1.05,'F');
+  doc.setFillColor(...RP.data);doc.circle(x,y,r,'F');
+  doc.setDrawColor(...RP.dataDark);doc.setLineWidth(0.3);doc.circle(x,y,r,'S');
+  doc.setFont(RP_F,'bold');doc.setFontSize(fs);doc.setTextColor(...RP.paper);
+  doc.text(String(label),x,y+fs*0.1235,{align:'center'});
+  doc.setTextColor(0);
+}
+
+// Rose des vents : disque clair, aiguille bipointe (nord plein / sud évidé).
+function rpNorthArrow(doc,cx,cy,r){
+  doc.setFillColor(...RP.paper);doc.circle(cx,cy,r,'F');
+  doc.setDrawColor(...RP.hair);doc.setLineWidth(0.4);doc.circle(cx,cy,r,'S');
+  const tip=cy-r*0.62,base=cy+r*0.50,waist=cy+r*0.14,half=r*0.29;
+  doc.setFillColor(...RP.ink);
+  doc.triangle(cx,tip,cx-half,base,cx,waist,'F');
+  doc.setFillColor(...RP.paper);doc.setDrawColor(...RP.inkSoft);doc.setLineWidth(0.25);
+  doc.triangle(cx,tip,cx+half,base,cx,waist,'FD');
+  doc.setFont(RP_F,'bold');doc.setFontSize(r*1.2);doc.setTextColor(...RP.ink);
+  doc.text('N',cx,cy-r-1.2,{align:'center'});
+  doc.setTextColor(0);
+}
+
+// Échelle graphique (segments alternés) doublée de l'échelle numérique : sur un
+// document imprimé puis photocopié/redimensionné, seule la barre reste juste —
+// le ratio sert de repère de lecture rapide.
+function rpScaleBar(doc,x,y,spanMeters,mapWmm){
+  const mPerMm=spanMeters/mapWmm;
+  const steps=[1,2,5,10,20,25,50,100,200,250,500,1000,2000,5000,10000,20000,50000];
+  const ideal=mPerMm*(mapWmm*0.20);
+  let len=steps[0];
+  for(const s of steps){if(s<=ideal)len=s;else break;}
+  const barW=len/mPerMm,barH=1.5,seg=barW/4;
+  const plateW=Math.max(barW+8,36),plateH=14;
+  doc.setFillColor(...RP.paper);doc.roundedRect(x,y,plateW,plateH,1,1,'F');
+  doc.setDrawColor(...RP.hair);doc.setLineWidth(0.3);doc.roundedRect(x,y,plateW,plateH,1,1,'S');
+  const bx=x+4,by=y+7.2;
+  for(let i=0;i<4;i++){
+    doc.setFillColor(...(i%2?RP.paper:RP.ink));
+    doc.rect(bx+i*seg,by,seg,barH,'F');
+  }
+  doc.setDrawColor(...RP.ink);doc.setLineWidth(0.25);doc.rect(bx,by,barW,barH,'S');
+  doc.setFont(RP_F,'normal');doc.setFontSize(5.6);doc.setTextColor(...RP.inkSoft);
+  doc.text('0',bx,by-1.2,{align:'center'});
+  doc.text(rpLen(len/2),bx+barW/2,by-1.2,{align:'center'});
+  doc.text(rpLen(len),bx+barW,by-1.2,{align:'center'});
+  doc.setFontSize(5.8);doc.setTextColor(...RP.muted);
+  doc.text('1 : '+rpThousands(Math.round(mPerMm*1000)),bx,by+barH+3.2);
+  doc.setTextColor(0);
+}
+
+// Répartit les repères qui se chevaucheraient visuellement (points GPS proches
 // vus à l'échelle du plan imprimé) en éventail autour de leur position réelle,
-// sans jamais déplacer le point réel : seul le badge numéroté est décalé, relié
-// par une ligne fine à un petit point marquant la position exacte.
+// sans jamais déplacer le point réel : seul le repère est décalé, relié par une
+// ligne fine à un petit point marquant la position exacte.
 function computeLabelLayout(projected,planX,planY,planW,planH){
   const n=projected.length;
-  const badgeDiam=8.5; // Ø visuel du badge (halo blanc inclus) : seuil de chevauchement
+  const badgeDiam=11.5; // Ø visuel du repère (halo inclus) : seuil de chevauchement
   const parent=Array.from({length:n},(_,i)=>i);
   function find(a){while(parent[a]!==a){parent[a]=parent[parent[a]];a=parent[a];}return a;}
   function union(a,b){const ra=find(a),rb=find(b);if(ra!==rb)parent[ra]=rb;}
@@ -2471,7 +2576,7 @@ function computeLabelLayout(projected,planX,planY,planW,planH){
   const groups={};
   for(let i=0;i<n;i++){const r=find(i);(groups[r]=groups[r]||[]).push(i);}
 
-  const margin=8;
+  const margin=9;
   const minX=planX+margin,maxX=planX+planW-margin,minY=planY+margin,maxY=planY+planH-margin;
   const out=new Array(n);
   Object.values(groups).forEach(idxs=>{
@@ -2482,13 +2587,22 @@ function computeLabelLayout(projected,planX,planY,planW,planH){
     }
     const cx=idxs.reduce((s,i)=>s+projected[i].x,0)/idxs.length;
     const cy=idxs.reduce((s,i)=>s+projected[i].y,0)/idxs.length;
-    // Écartement volontairement plus large que le strict minimum anti-chevauchement :
-    // laisse de la place au point exact + aux lignes de rappel au centre de l'éventail,
-    // qui sinon s'entassent visuellement entre des badges à peine séparés.
-    const fanSpacing=11;
-    const r=Math.max(7,fanSpacing/(2*Math.sin(Math.PI/idxs.length)));
-    idxs.forEach((i,k)=>{
-      const angle=-Math.PI/2+(2*Math.PI*k)/idxs.length;
+    // Écartement volontairement plus large que le strict minimum anti-chevauchement.
+    // Le rayon plancher garantit une amorce de ligne réellement visible entre le
+    // point exact et le repère : rayon du repère (4,6) + son halo (1,05) + le
+    // point (0,9) + ~4 mm de trait apparent, sinon la ligne se réduit à un moignon
+    // caché sous le halo et la correspondance devient illisible.
+    const fanSpacing=14;
+    const r=Math.max(11.5,fanSpacing/(2*Math.sin(Math.PI/idxs.length)));
+    // Les repères sont posés dans l'ordre angulaire réel des points, en calant
+    // l'éventail sur l'orientation du premier : chaque repère part ainsi du côté
+    // où se trouve vraiment son point, ce qui évite des lignes de rappel qui se
+    // croisent en travers du groupe.
+    const bearing=i=>Math.atan2(projected[i].y-cy,projected[i].x-cx);
+    const ordered=idxs.slice().sort((a,b)=>bearing(a)-bearing(b));
+    const base=bearing(ordered[0]);
+    ordered.forEach((i,k)=>{
+      const angle=base+(2*Math.PI*k)/ordered.length;
       const x=Math.min(maxX,Math.max(minX,cx+r*Math.cos(angle)));
       const y=Math.min(maxY,Math.max(minY,cy+r*Math.sin(angle)));
       out[i]={x,y,offset:true};
@@ -2497,142 +2611,105 @@ function computeLabelLayout(projected,planX,planY,planW,planH){
   return out;
 }
 
-// Flèche du nord : cercle, triangle plein pointant vers le haut, lettre N
-// au-dessus — dessinée en vectoriel (net à toute résolution d'impression,
-// jamais pixelisée) plutôt qu'en image bitmap importée.
-function drawNorthArrow(doc,cx,cy,r){
-  doc.setFillColor(255);doc.circle(cx,cy,r,'F');
-  doc.setDrawColor(20);doc.setLineWidth(0.6);doc.circle(cx,cy,r,'S');
-  doc.setFillColor(20);
-  doc.triangle(cx,cy-r*0.62,cx-r*0.4,cy+r*0.55,cx+r*0.4,cy+r*0.55,'F');
-  doc.setFont('helvetica','bold');doc.setFontSize(r*1.55);doc.setTextColor(20);
-  doc.text('N',cx,cy-r-1.3,{align:'center'});
-  doc.setTextColor(0);
-}
-
-// Échelle graphique (barre segmentée + longueur "ronde" adaptée à l'étendue affichée).
-function drawScaleBar(doc,x,y,spanMeters,planWmm){
-  const mPerMm=spanMeters/planWmm;
-  const idealLenM=mPerMm*(planWmm*0.22);
-  const niceSteps=[1,2,5,10,20,25,50,100,200,250,500,1000,2000,5000,10000,20000,50000,100000];
-  let lenM=niceSteps[0];
-  for(const s of niceSteps){if(s<=idealLenM)lenM=s;else break;}
-  const lenMm=lenM/mPerMm,half=lenMm/2,barH=1.6;
-  doc.setFillColor(255);doc.rect(x-2,y-6,lenMm+4,10,'F');
-  doc.setDrawColor(30);doc.setLineWidth(0.2);
-  doc.setFillColor(30);doc.rect(x,y,half,barH,'F');
-  doc.setFillColor(255);doc.rect(x+half,y,half,barH,'FD');
-  doc.rect(x,y,lenMm,barH);
-  doc.setFont('helvetica','normal');doc.setFontSize(6.5);doc.setTextColor(30);
-  doc.text('0',x,y-1);
-  doc.text(lenM>=1000?(lenM/1000)+' km':lenM+' m',x+lenMm,y-1,{align:'right'});
-  doc.setTextColor(0);
-}
-
-// Choisit le coin (haut-droite ou bas-droite) le moins susceptible de recouvrir
-// une photo du plan pour y placer l'encart de situation générale (le coin
-// haut-gauche est réservé à la flèche du nord, le bas-gauche à l'échelle).
-function pickInsetCorner(points,project,planX,planY,planW,planH,insetW,insetH){
-  const candidates=[
-    {x:planX+planW-insetW,y:planY},
-    {x:planX+planW-insetW,y:planY+planH-insetH},
-  ];
-  let best=candidates[0],bestCount=Infinity;
-  candidates.forEach(c=>{
-    let count=0;
-    points.forEach(p=>{
-      const [x,y]=project(p.lon,p.lat);
-      if(x>=c.x&&x<=c.x+insetW&&y>=c.y&&y<=c.y+insetH)count++;
-    });
-    if(count<bestCount){bestCount=count;best=c;}
-  });
-  return best;
-}
-
-// Encart "situation générale" : vue IGN large autour du site, avec un rectangle
-// rouge indiquant l'emprise de la carte de localisation détaillée. Ne dessine
-// rien si la connexion échoue (pas d'encart à moitié vide).
-async function drawOverviewInset(doc,corner,insetW,insetH,mxMin,myMin,mxMax,myMax){
-  const {x:insetX,y:insetY}=corner;
-  const detailCenterMx=(mxMin+mxMax)/2,detailCenterMy=(myMin+myMax)/2;
-  const factor=14;
-  let ovSpanX=Math.min(35000,Math.max(2500,(mxMax-mxMin)*factor));
-  let ovSpanY=Math.min(35000,Math.max(2500,(myMax-myMin)*factor));
-  const ratio=insetW/insetH;
-  if(ovSpanX/ovSpanY<ratio)ovSpanX=ovSpanY*ratio;else ovSpanY=ovSpanX/ratio;
-  const ovMxMin=detailCenterMx-ovSpanX/2,ovMxMax=detailCenterMx+ovSpanX/2;
-  const ovMyMin=detailCenterMy-ovSpanY/2,ovMyMax=detailCenterMy+ovSpanY/2;
-  const [ovLonMin,ovLatMin]=fromWebMercator(ovMxMin,ovMyMin);
-  const [ovLonMax,ovLatMax]=fromWebMercator(ovMxMax,ovMyMax);
-
-  const targetPxW=insetW/25.4*130,targetPxH=insetH/25.4*130;
-  const ovZoom=Math.max(
-    pickZoomForSpan(ovSpanX,targetPxW,10,16),
-    pickZoomForSpan(ovSpanY,targetPxH,10,16)
+// Vue de situation : fond Plan IGN élargi autour du site. La récupération est
+// séparée du dessin pour que le cartouche puisse se réorganiser sans laisser de
+// trou quand la connexion manque.
+async function rpFetchSituation(w,h,mxMin,myMin,mxMax,myMax){
+  const cx=(mxMin+mxMax)/2,cy=(myMin+myMax)/2;
+  let spanX=Math.min(35000,Math.max(2500,(mxMax-mxMin)*14));
+  let spanY=Math.min(35000,Math.max(2500,(myMax-myMin)*14));
+  const ratio=w/h;
+  if(spanX/spanY<ratio)spanX=spanY*ratio;else spanY=spanX/ratio;
+  const box={
+    mxMin:cx-spanX/2,mxMax:cx+spanX/2,
+    myMin:cy-spanY/2,myMax:cy+spanY/2
+  };
+  const [lo1,la1]=fromWebMercator(box.mxMin,box.myMin);
+  const [lo2,la2]=fromWebMercator(box.mxMax,box.myMax);
+  const z=Math.max(
+    pickZoomForSpan(spanX,w/25.4*150,10,16),
+    pickZoomForSpan(spanY,h/25.4*150,10,16)
   );
-  const overview=await tryFetchIgnBasemap(ovLonMin,ovLatMin,ovLonMax,ovLatMax,ovZoom,90,10,'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png');
-  if(!overview)return;
-
-  doc.setFillColor(210);
-  doc.roundedRect(insetX+0.8,insetY+1,insetW,insetH,1.5,1.5,'F');
-  doc.addImage(overview,'JPEG',insetX,insetY,insetW,insetH);
-  doc.setDrawColor(40);doc.setLineWidth(0.5);
-  doc.rect(insetX,insetY,insetW,insetH);
-
-  function projInset(mx,my){
-    return [insetX+(mx-ovMxMin)/(ovMxMax-ovMxMin)*insetW,insetY+(ovMyMax-my)/(ovMyMax-ovMyMin)*insetH];
-  }
-  const [rx0,ry0]=projInset(mxMin,myMax),[rx1,ry1]=projInset(mxMax,myMin);
-  const rrX=Math.min(rx0,rx1),rrY=Math.min(ry0,ry1),rrW=Math.max(0.6,Math.abs(rx1-rx0)),rrH=Math.max(0.6,Math.abs(ry1-ry0));
-  // Liseré blanc sous le rouge : le rectangle d'emprise reste visible quelle
-  // que soit la couleur du fond (route, bâti, végétation) sous le Plan IGN v2.
-  doc.setDrawColor(255);doc.setLineWidth(1.4);doc.rect(rrX,rrY,rrW,rrH);
-  doc.setDrawColor(...PDF_COL_RED);doc.setLineWidth(0.7);doc.rect(rrX,rrY,rrW,rrH);
-
-  doc.setFillColor(255);
-  doc.rect(insetX,insetY,insetW,5,'F');
-  doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(30);
-  doc.text('Situation générale',insetX+insetW/2,insetY+3.5,{align:'center'});
-  doc.setTextColor(0);
+  const img=await tryFetchIgnBasemap(lo1,la1,lo2,la2,z,90,10,'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png');
+  return img?{img,box}:null;
 }
 
-// En-tête (bandeau + filet coloré) répété sur chaque page de photos.
-function drawPhotoPageHeader(doc,pw,margin,projectTitle){
-  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(30);
-  doc.text(projectTitle,margin,margin-3);
-  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(140);
-  doc.text('Photos géolocalisées',pw-margin,margin-3,{align:'right'});
-  doc.setDrawColor(...PDF_COL_GREEN);doc.setLineWidth(0.8);
-  doc.line(margin,margin,pw-margin,margin);
+// Dessine la vue de situation + l'emprise du plan détaillé (rectangle rouge
+// doublé d'un liseré blanc pour rester visible sur n'importe quel fond).
+function rpDrawSituation(doc,x,y,w,h,s,mxMin,myMin,mxMax,myMax){
+  const b=s.box;
+  doc.addImage(s.img,'JPEG',x,y,w,h);
+  doc.setDrawColor(...RP.hair);doc.setLineWidth(0.35);doc.rect(x,y,w,h,'S');
+  const toX=m=>x+(m-b.mxMin)/(b.mxMax-b.mxMin)*w;
+  const toY=m=>y+(b.myMax-m)/(b.myMax-b.myMin)*h;
+  const rx=toX(mxMin),ry=toY(myMax);
+  const rw=Math.max(1.4,toX(mxMax)-rx),rh=Math.max(1.4,toY(myMin)-ry);
+  doc.setDrawColor(...RP.paper);doc.setLineWidth(1.3);doc.rect(rx,ry,rw,rh,'S');
+  doc.setDrawColor(...RP.data);doc.setLineWidth(0.7);doc.rect(rx,ry,rw,rh,'S');
+}
+
+// En-tête répété sur chaque page de fiches photo.
+function rpPhotoHeader(doc,pw,m,title){
+  doc.setFont(RP_F,'bold');doc.setFontSize(10);doc.setTextColor(...RP.ink);
+  doc.text(title,m,m-2.5);
+  doc.setFont(RP_F,'normal');doc.setFontSize(6.4);doc.setTextColor(...RP.muted);
+  rpTracked(doc,'COMPTE-RENDU PHOTOGRAPHIQUE',pw-m,m-2.5,0.5,'right');
+  doc.setDrawColor(...RP.accent);doc.setLineWidth(0.7);
+  doc.line(m,m,pw-m,m);
   doc.setTextColor(0);
-  return margin+7;
+  return m+8;
+}
+
+// Bloc de métadonnées du bandeau de titre : paires libellé/valeur posées de
+// droite à gauche, largeurs mesurées pour un alignement propre.
+function rpMetaBlock(doc,items,rightX,yLabel,yValue){
+  let x=rightX;
+  for(let i=items.length-1;i>=0;i--){
+    const k=items[i][0],v=items[i][1];
+    doc.setFont(RP_F,'bold');doc.setFontSize(10);
+    const wv=doc.getTextWidth(v);
+    doc.setFont(RP_F,'normal');doc.setFontSize(5.9);
+    const wk=doc.getTextWidth(k)+0.55*Math.max(0,k.length-1);
+    const cw=Math.max(wv,wk);
+    doc.setTextColor(150,160,170);
+    rpTracked(doc,k,x,yLabel,0.55,'right');
+    doc.setFont(RP_F,'bold');doc.setFontSize(10);doc.setTextColor(255,255,255);
+    doc.text(v,x,yValue,{align:'right'});
+    x-=cw+9;
+  }
+  doc.setTextColor(0);
 }
 
 async function buildPhotoReportPDF(points,setStatus,projectTitle){
   projectTitle=projectTitle||'Photos géolocalisées';
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
-  doc.setProperties({title:projectTitle});
+  doc.setProperties({title:projectTitle,subject:'Compte-rendu photographique'});
   const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();
-  const margin=12;
+  const M=12;
+  const today=new Date().toLocaleDateString('fr-FR');
 
   setStatus('Création du plan de localisation…');
 
-  // ---- Bandeau d'en-tête ----
-  const headerH=24;
-  doc.setFillColor(...PDF_COL_DARK);doc.rect(0,0,pw,headerH,'F');
-  doc.setDrawColor(...PDF_COL_GREEN);doc.setLineWidth(1.2);doc.line(0,headerH,pw,headerH);
-  doc.setFont('helvetica','bold');doc.setFontSize(17);doc.setTextColor(255);
-  doc.text(projectTitle,margin,13);
-  doc.setFont('helvetica','normal');doc.setFontSize(10.5);doc.setTextColor(205);
-  doc.text('Plan de localisation des photos',margin,19.5);
-  doc.setFontSize(9);doc.setTextColor(205);
-  doc.text('Généré le '+new Date().toLocaleDateString('fr-FR'),pw-margin,11,{align:'right'});
-  doc.text(points.length+' photo'+(points.length>1?'s':'')+' géolocalisée'+(points.length>1?'s':''),pw-margin,17,{align:'right'});
-  doc.setTextColor(0);
+  // ---------------- Bandeau de titre ----------------
+  const headH=26;
+  doc.setFillColor(...RP.ink);doc.rect(0,0,pw,headH,'F');
+  doc.setDrawColor(...RP.accent);doc.setLineWidth(1.1);doc.line(0,headH+0.55,pw,headH+0.55);
+  doc.setFont(RP_F,'normal');doc.setFontSize(6.4);doc.setTextColor(126,196,175);
+  rpTracked(doc,'COMPTE-RENDU PHOTOGRAPHIQUE',M,9.4,0.9);
+  doc.setFont(RP_F,'bold');doc.setFontSize(16);doc.setTextColor(255,255,255);
+  doc.text(projectTitle,M,18.4);
+  doc.setFont(RP_F,'normal');doc.setFontSize(7.4);doc.setTextColor(172,181,190);
+  doc.text('Plan de localisation des prises de vue',M,23.2);
+  rpMetaBlock(doc,[['ÉDITÉ LE',today],['PRISES DE VUE',String(points.length)]],pw-M,11,18.4);
 
-  const footerReserve=20;
-  const planY=headerH+9,planX=margin,planW=pw-margin*2,planH=ph-planY-footerReserve;
+  // ---------------- Géométrie : carte + cartouche ----------------
+  const topY=headH+9;
+  const panelW=64,gapPC=6;
+  const mapX=M,mapY=topY;
+  const mapW=pw-M*2-panelW-gapPC;
+  const mapH=ph-16-topY-6;
+  const panelX=pw-M-panelW,panelY=topY,panelH=mapH;
 
   let lonMin=Infinity,lonMax=-Infinity,latMin=Infinity,latMax=-Infinity;
   points.forEach(p=>{if(p.lon<lonMin)lonMin=p.lon;if(p.lon>lonMax)lonMax=p.lon;if(p.lat<latMin)latMin=p.lat;if(p.lat>latMax)latMax=p.lat;});
@@ -2642,11 +2719,11 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   lonMin-=padLon;lonMax+=padLon;latMin-=padLat;latMax+=padLat;
 
   // Projection Web Mercator (comme un vrai fond de carte), étendue élargie pour
-  // correspondre exactement au ratio largeur/hauteur du cadre du plan — l'image
-  // du fond IGN (si récupérée) pourra ainsi remplir tout le cadre sans déformation.
+  // correspondre exactement au ratio du cadre : le fond IGN remplit tout le
+  // cadre sans déformation.
   let [mxMin,myMin]=toWebMercator(lonMin,latMin);
   let [mxMax,myMax]=toWebMercator(lonMax,latMax);
-  const boxRatio=planW/planH;
+  const boxRatio=mapW/mapH;
   if((mxMax-mxMin)/(myMax-myMin)<boxRatio){
     const newSpanX=(myMax-myMin)*boxRatio,cx=(mxMin+mxMax)/2;
     mxMin=cx-newSpanX/2;mxMax=cx+newSpanX/2;
@@ -2657,155 +2734,177 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const [lonMinAdj,latMinAdj]=fromWebMercator(mxMin,myMin);
   const [lonMaxAdj,latMaxAdj]=fromWebMercator(mxMax,myMax);
 
-  // Zoom calculé pour que le fond de carte fournisse au moins la résolution
-  // d'impression visée (200 dpi) — jamais dégradé pour économiser des tuiles.
+  // Zoom calculé pour fournir au moins la résolution d'impression visée
+  // (200 dpi) — jamais dégradé pour économiser des tuiles.
   const targetDPI=200;
-  const targetPxW=planW/25.4*targetDPI,targetPxH=planH/25.4*targetDPI;
   const zoom=Math.max(
-    pickZoomForSpan(mxMax-mxMin,targetPxW,17,19),
-    pickZoomForSpan(myMax-myMin,targetPxH,17,19)
+    pickZoomForSpan(mxMax-mxMin,mapW/25.4*targetDPI,17,19),
+    pickZoomForSpan(myMax-myMin,mapH/25.4*targetDPI,17,19)
   );
 
   setStatus('Recherche d\'une connexion pour le fond de carte IGN…');
   const basemap=await tryFetchIgnBasemap(lonMinAdj,latMinAdj,lonMaxAdj,latMaxAdj,zoom,140,17);
+  setStatus('Création de la carte de situation…');
+  const situation=await rpFetchSituation(panelW-10,44,mxMin,myMin,mxMax,myMax);
 
-  doc.setFillColor(205);
-  doc.roundedRect(planX+1,planY+1.4,planW,planH,1.5,1.5,'F');
-  if(basemap){
-    doc.addImage(basemap,'JPEG',planX,planY,planW,planH);
-    // Léger voile sombre sur l'orthophoto : une image aérienne est souvent
-    // visuellement chargée (toits, végétation, ombres) et nuit à la lisibilité
-    // des points/numéros posés dessus. Un voile discret fait ressortir les
-    // repères sans rendre le fond de carte illisible.
-    doc.saveGraphicsState();
-    doc.setGState(new doc.GState({opacity:0.16}));
-    doc.setFillColor(0,0,0);doc.rect(planX,planY,planW,planH,'F');
-    doc.restoreGraphicsState();
-  }else{
-    doc.setFillColor(250);doc.rect(planX,planY,planW,planH,'F');
-  }
-  doc.setDrawColor(60);doc.setLineWidth(0.5);
-  doc.rect(planX,planY,planW,planH);
+  // ---------------- Carte ----------------
+  // Pas de voile sur l'orthophoto : les repères ont leur propre halo et tout le
+  // mobilier repose sur des plaques opaques, l'image reste donc fidèle.
+  doc.setFillColor(...RP.panel);doc.rect(mapX,mapY,mapW,mapH,'F');
+  if(basemap)doc.addImage(basemap,'JPEG',mapX,mapY,mapW,mapH);
+  doc.setDrawColor(...RP.ink);doc.setLineWidth(0.5);doc.rect(mapX,mapY,mapW,mapH,'S');
 
   function project(lon,lat){
     const [mx,my]=toWebMercator(lon,lat);
-    return [planX+(mx-mxMin)/(mxMax-mxMin)*planW,planY+(myMax-my)/(myMax-myMin)*planH];
+    return [mapX+(mx-mxMin)/(mxMax-mxMin)*mapW,mapY+(myMax-my)/(myMax-myMin)*mapH];
   }
-
   const projected=points.map(p=>{const [x,y]=project(p.lon,p.lat);return {x,y};});
-  const labels=computeLabelLayout(projected,planX,planY,planW,planH);
+  const labels=computeLabelLayout(projected,mapX,mapY,mapW,mapH);
 
-  // Lignes de rappel + point exact pour les badges décalés (chevauchement évité).
-  // Halo blanc sous le point et large liseré sombre sur le trait : reste lisible
-  // même sur un fond de carte clair (route, toit, sable).
+  // Lignes de rappel + point exact pour les repères décalés.
   labels.forEach((l,i)=>{
     if(!l.offset)return;
-    doc.setDrawColor(255);doc.setLineWidth(0.6);
+    doc.setDrawColor(...RP.paper);doc.setLineWidth(0.8);
     doc.line(projected[i].x,projected[i].y,l.x,l.y);
-    doc.setDrawColor(110);doc.setLineWidth(0.2);
+    doc.setDrawColor(...RP.dataDark);doc.setLineWidth(0.28);
     doc.line(projected[i].x,projected[i].y,l.x,l.y);
-    doc.setFillColor(255);doc.circle(projected[i].x,projected[i].y,0.85,'F');
-    doc.setFillColor(20);doc.circle(projected[i].x,projected[i].y,0.5,'F');
+    doc.setFillColor(...RP.paper);doc.circle(projected[i].x,projected[i].y,0.9,'F');
+    doc.setFillColor(...RP.dataDark);doc.circle(projected[i].x,projected[i].y,0.5,'F');
   });
+  points.forEach((p,i)=>rpMarker(doc,labels[i].x,labels[i].y,i+1,4.6));
 
-  points.forEach((p,i)=>{
-    const {x,y}=labels[i];
-    doc.setFillColor(255);doc.circle(x,y,4.2,'F');
-    doc.setFillColor(...PDF_COL_BLUE);doc.setDrawColor(20,80,120);doc.setLineWidth(0.4);
-    doc.circle(x,y,3.4,'FD');
-    doc.setTextColor(255);doc.setFontSize(7);doc.setFont('helvetica','bold');
-    doc.text(String(i+1),x,y+1.1,{align:'center'});
-  });
+  rpNorthArrow(doc,mapX+11,mapY+12,6.4);
+  rpScaleBar(doc,mapX+5,mapY+mapH-19,mxMax-mxMin,mapW);
+
+  // Note de lecture + attribution, posées sous le cadre (hors de l'image).
+  doc.setFont(RP_F,'normal');doc.setFontSize(6.6);doc.setTextColor(...RP.muted);
+  doc.text('Les numéros renvoient aux fiches photographiques des pages suivantes.',mapX,mapY+mapH+4.3);
+  // Le cadre vide du repli hors ligne doit s'expliquer de lui-même : sans cette
+  // mention, le lecteur croit à un plan raté plutôt qu'à une absence de réseau.
+  doc.text(basemap?'Fond de carte : IGN Géoplateforme':'Fond de carte indisponible (hors connexion) — positions relevées conservées',
+    mapX+mapW,mapY+mapH+4.3,{align:'right'});
   doc.setTextColor(0);
 
-  // flèche du nord (haut-gauche du cadre)
-  drawNorthArrow(doc,planX+10,planY+18,6);
+  // ---------------- Cartouche ----------------
+  doc.setFillColor(...RP.panel);doc.rect(panelX,panelY,panelW,panelH,'F');
+  doc.setDrawColor(...RP.hair);doc.setLineWidth(0.35);doc.rect(panelX,panelY,panelW,panelH,'S');
+  const cx0=panelX+5,cw0=panelW-10;
+  let cy=panelY+8;
 
-  // échelle graphique (bas-gauche du cadre)
-  drawScaleBar(doc,planX+7,planY+planH-13,mxMax-mxMin,planW);
-
-  if(basemap){
-    doc.setFillColor(0,0,0);
-    doc.rect(planX,planY+planH-6,74,6,'F');
-    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(255);
-    doc.text('Fond de carte : IGN Géoplateforme (data.geopf.fr)',planX+2,planY+planH-2);
-    doc.setTextColor(0);
+  if(situation){
+    const insetH=44;
+    cy=rpLabel(doc,'Situation générale',cx0,cy,cw0);
+    rpDrawSituation(doc,cx0,cy,cw0,insetH,situation,mxMin,myMin,mxMax,myMax);
+    cy+=insetH+7;
   }
 
-  // encart "situation générale" (coin le moins gênant pour les photos)
-  setStatus('Création de la carte de situation générale…');
-  const insetW=54,insetH=42;
-  const corner=pickInsetCorner(points,project,planX,planY,planW,planH,insetW,insetH);
-  await drawOverviewInset(doc,corner,insetW,insetH,mxMin,myMin,mxMax,myMax);
+  cy=rpLabel(doc,'Légende',cx0,cy,cw0);
+  rpMarker(doc,cx0+3.6,cy+0.6,'1',3.4);
+  doc.setFont(RP_F,'normal');doc.setFontSize(6.8);doc.setTextColor(...RP.inkSoft);
+  doc.text('Prise de vue photographique',cx0+9.4,cy+1.8);
+  cy+=7.4;
+  if(situation){
+    doc.setDrawColor(...RP.data);doc.setLineWidth(0.7);
+    doc.rect(cx0+0.9,cy-1.9,5.4,3.6,'S');
+    doc.setTextColor(...RP.inkSoft);
+    doc.text('Emprise du plan ci-contre',cx0+9.4,cy+0.9);
+    cy+=7.4;
+  }
+  cy+=1.5;
 
-  // légende des numéros
-  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(110);
-  doc.text('Les numéros correspondent aux photos des pages suivantes.',planX,planY+planH+6);
+  // Index : rend le plan autonome (on sait ce que montre chaque numéro sans
+  // tourner la page). Tronqué proprement si la place manque.
+  const metaH=20;
+  const lineH=4.5;
+  const indexTop=rpLabel(doc,'Index des prises de vue',cx0,cy,cw0);
+  const avail=(panelY+panelH-metaH)-indexTop;
+  let maxRows=Math.max(0,Math.floor(avail/lineH));
+  let shown=points.length;
+  if(points.length>maxRows){shown=Math.max(0,maxRows-1);}
+  doc.setFont(RP_F,'normal');doc.setFontSize(6.6);
+  for(let i=0;i<shown;i++){
+    const y=indexTop+i*lineH;
+    doc.setFont(RP_F,'bold');doc.setTextColor(...RP.data);
+    doc.text(String(i+1),cx0+3.6,y,{align:'right'});
+    doc.setFont(RP_F,'normal');doc.setTextColor(...RP.inkSoft);
+    let t=String(points[i].displayName||'');
+    const parts=doc.splitTextToSize(t,cw0-7);
+    if(parts.length>1)t=parts[0].replace(/\s+\S*$/,'')+'…';else t=parts[0];
+    doc.text(t,cx0+5.6,y);
+  }
+  if(shown<points.length){
+    doc.setFont(RP_F,'italic');doc.setTextColor(...RP.muted);
+    doc.text('+ '+(points.length-shown)+' autres',cx0+5.6,indexTop+shown*lineH);
+  }
+
+  // Bloc de métadonnées, calé en bas du cartouche.
+  const my0=panelY+panelH-metaH+5;
+  doc.setDrawColor(...RP.hair);doc.setLineWidth(0.35);
+  doc.line(cx0,my0-5,cx0+cw0,my0-5);
+  doc.setFont(RP_F,'normal');doc.setFontSize(5.8);doc.setTextColor(...RP.muted);
+  [
+    'Coordonnées : WGS 84 (EPSG:4326)',
+    basemap?'Fond : IGN Géoplateforme — Orthophotos':'Fond de carte indisponible (hors connexion)',
+    'Édité le '+today
+  ].forEach((t,i)=>doc.text(t,cx0,my0+i*3.4));
   doc.setTextColor(0);
 
-  // Pages photos : 2 colonnes, portrait
-  const mp=14,gutter=8;
-  const colW=(210-mp*2-gutter)/2;
-  const colXs=[mp,mp+colW+gutter];
-  const maxY=297-mp;
-  doc.addPage('a4','portrait');
-  let cursorY=drawPhotoPageHeader(doc,210,mp,projectTitle);
+  // ---------------- Fiches photographiques ----------------
+  // Grille strictement régulière : chaque fiche occupe la même hauteur quelle
+  // que soit l'orientation de la photo (letterbox à l'intérieur d'un cadre
+  // fixe). C'est ce qui donne une planche-contact propre plutôt qu'un
+  // empilement irrégulier.
+  const PW=210,PH=297,mp=14,gut=8,cols=2,rows=3;
+  const cardW=(PW-mp*2-gut)/cols;
+  const headBottom=mp+8;
+  const availH=(PH-16)-headBottom;
+  const cardH=(availH-gut*(rows-1))/rows;
+  const capH=15,imgH=cardH-capH;
+  const perPage=cols*rows;
 
-  // Hauteur max d'une photo dans la grille : sans ce plafond, une photo au
-  // format portrait (haute et étroite) fait exploser la hauteur de toute la
-  // ligne et laisse un vide énorme à côté d'une photo paysage voisine. On
-  // "letterbox" plutôt (image réduite en conservant ses proportions, centrée
-  // dans sa colonne) — comme un object-fit:contain.
-  const maxPhotoH=92;
-  for(let i=0;i<points.length;i+=2){
-    setStatus('Ajout des photos… '+(i+1)+'/'+points.length);
-    const rowPoints=[points[i]];
-    if(points[i+1])rowPoints.push(points[i+1]);
-    const loaded=[];
-    for(const p of rowPoints){
-      const {img,url}=await loadImageElement(p.blob);
-      let drawW=colW,drawH=colW*(img.naturalHeight/img.naturalWidth);
-      if(drawH>maxPhotoH){drawH=maxPhotoH;drawW=maxPhotoH*(img.naturalWidth/img.naturalHeight);}
-      loaded.push({p,img,url,drawW,drawH});
-    }
-    const captionH=15;
-    const rowH=Math.max(...loaded.map(l=>l.drawH))+captionH;
-    if(cursorY+rowH>maxY){
+  for(let i=0;i<points.length;i++){
+    if(i%perPage===0){
       doc.addPage('a4','portrait');
-      cursorY=drawPhotoPageHeader(doc,210,mp,projectTitle);
+      rpPhotoHeader(doc,PW,mp,projectTitle);
     }
-    loaded.forEach((l,idx)=>{
-      const colX=colXs[idx],num=i+idx+1,x=colX+(colW-l.drawW)/2;
-      doc.setFillColor(215);
-      doc.roundedRect(x+1,cursorY+1.3,l.drawW,l.drawH,1.2,1.2,'F');
-      doc.addImage(l.img,'JPEG',x,cursorY,l.drawW,l.drawH);
-      doc.setDrawColor(200);doc.setLineWidth(0.25);
-      doc.rect(x,cursorY,l.drawW,l.drawH);
-      doc.setFillColor(255);doc.circle(x+5,cursorY+5,4.6,'F');
-      doc.setFillColor(...PDF_COL_BLUE);doc.setDrawColor(20,80,120);doc.setLineWidth(0.35);
-      doc.circle(x+5,cursorY+5,4,'FD');
-      doc.setTextColor(255);doc.setFontSize(8);doc.setFont('helvetica','bold');
-      doc.text(String(num),x+5,cursorY+6.3,{align:'center'});
-      doc.setTextColor(20);doc.setFont('helvetica','bold');doc.setFontSize(9.5);
-      doc.text(l.p.displayName,colX,cursorY+l.drawH+5.5,{maxWidth:colW});
-      doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(130);
-      doc.text('N '+l.p.lat.toFixed(5)+'  E '+l.p.lon.toFixed(5),colX,cursorY+l.drawH+9.7,{maxWidth:colW});
-      doc.setTextColor(0);
-      URL.revokeObjectURL(l.url);
-    });
-    cursorY+=rowH+gutter;
+    setStatus('Ajout des photos… '+(i+1)+'/'+points.length);
+    const p=points[i];
+    const k=i%perPage,r=Math.floor(k/cols),c=k%cols;
+    const x=mp+c*(cardW+gut),y=headBottom+r*(cardH+gut);
+    const {img,url}=await loadImageElement(p.blob);
+
+    doc.setFillColor(...RP.panel);doc.rect(x,y,cardW,imgH,'F');
+    const s=Math.min(cardW/img.naturalWidth,imgH/img.naturalHeight);
+    const dw=img.naturalWidth*s,dh=img.naturalHeight*s;
+    doc.addImage(img,'JPEG',x+(cardW-dw)/2,y+(imgH-dh)/2,dw,dh);
+    doc.setFillColor(...RP.paper);doc.rect(x,y+imgH,cardW,capH,'F');
+    doc.setDrawColor(...RP.hair);doc.setLineWidth(0.35);
+    doc.rect(x,y,cardW,cardH,'S');
+    doc.line(x,y+imgH,x+cardW,y+imgH);
+
+    rpMarker(doc,x+6.5,y+imgH+7.6,i+1,3.7);
+    doc.setFont(RP_F,'bold');doc.setFontSize(8.6);doc.setTextColor(...RP.ink);
+    let t=String(p.displayName||'');
+    const parts=doc.splitTextToSize(t,cardW-16);
+    if(parts.length>1)t=parts[0].replace(/\s+\S*$/,'')+'…';else t=parts[0];
+    doc.text(t,x+12.5,y+imgH+6.4);
+    doc.setFont(RP_F,'normal');doc.setFontSize(6.3);doc.setTextColor(...RP.muted);
+    doc.text('N '+p.lat.toFixed(5)+'    E '+p.lon.toFixed(5),x+12.5,y+imgH+11);
+    doc.setTextColor(0);
+    URL.revokeObjectURL(url);
   }
 
-  // Pied de page (numérotation) sur l'ensemble du document
-  const totalPages=doc.internal.getNumberOfPages();
-  for(let i=1;i<=totalPages;i++){
+  // ---------------- Pied de page ----------------
+  const total=doc.internal.getNumberOfPages();
+  for(let i=1;i<=total;i++){
     doc.setPage(i);
     const w=doc.internal.pageSize.getWidth(),h=doc.internal.pageSize.getHeight();
-    doc.setDrawColor(220);doc.setLineWidth(0.2);
-    doc.line(12,h-9,w-12,h-9);
-    doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(140);
-    doc.text(projectTitle,12,h-5);
-    doc.text('Page '+i+'/'+totalPages,w-12,h-5,{align:'right'});
+    const m=w>250?M:mp;
+    doc.setDrawColor(...RP.hair);doc.setLineWidth(0.3);
+    doc.line(m,h-10,w-m,h-10);
+    doc.setFont(RP_F,'normal');doc.setFontSize(6.5);doc.setTextColor(...RP.muted);
+    doc.text(projectTitle,m,h-6);
+    doc.text(i+' / '+total,w-m,h-6,{align:'right'});
     doc.setTextColor(0);
   }
 
