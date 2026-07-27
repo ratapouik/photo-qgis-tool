@@ -2482,7 +2482,11 @@ function computeLabelLayout(projected,planX,planY,planW,planH){
     }
     const cx=idxs.reduce((s,i)=>s+projected[i].x,0)/idxs.length;
     const cy=idxs.reduce((s,i)=>s+projected[i].y,0)/idxs.length;
-    const r=Math.max(5.5,badgeDiam/(2*Math.sin(Math.PI/idxs.length)));
+    // Écartement volontairement plus large que le strict minimum anti-chevauchement :
+    // laisse de la place au point exact + aux lignes de rappel au centre de l'éventail,
+    // qui sinon s'entassent visuellement entre des badges à peine séparés.
+    const fanSpacing=11;
+    const r=Math.max(7,fanSpacing/(2*Math.sin(Math.PI/idxs.length)));
     idxs.forEach((i,k)=>{
       const angle=-Math.PI/2+(2*Math.PI*k)/idxs.length;
       const x=Math.min(maxX,Math.max(minX,cx+r*Math.cos(angle)));
@@ -2696,12 +2700,12 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   // même sur un fond de carte clair (route, toit, sable).
   labels.forEach((l,i)=>{
     if(!l.offset)return;
-    doc.setDrawColor(255);doc.setLineWidth(0.9);
+    doc.setDrawColor(255);doc.setLineWidth(0.6);
     doc.line(projected[i].x,projected[i].y,l.x,l.y);
-    doc.setDrawColor(90);doc.setLineWidth(0.3);
+    doc.setDrawColor(110);doc.setLineWidth(0.2);
     doc.line(projected[i].x,projected[i].y,l.x,l.y);
-    doc.setFillColor(255);doc.circle(projected[i].x,projected[i].y,1.1,'F');
-    doc.setFillColor(20);doc.circle(projected[i].x,projected[i].y,0.7,'F');
+    doc.setFillColor(255);doc.circle(projected[i].x,projected[i].y,0.85,'F');
+    doc.setFillColor(20);doc.circle(projected[i].x,projected[i].y,0.5,'F');
   });
 
   points.forEach((p,i)=>{
@@ -2747,6 +2751,12 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   doc.addPage('a4','portrait');
   let cursorY=drawPhotoPageHeader(doc,210,mp,projectTitle);
 
+  // Hauteur max d'une photo dans la grille : sans ce plafond, une photo au
+  // format portrait (haute et étroite) fait exploser la hauteur de toute la
+  // ligne et laisse un vide énorme à côté d'une photo paysage voisine. On
+  // "letterbox" plutôt (image réduite en conservant ses proportions, centrée
+  // dans sa colonne) — comme un object-fit:contain.
+  const maxPhotoH=92;
   for(let i=0;i<points.length;i+=2){
     setStatus('Ajout des photos… '+(i+1)+'/'+points.length);
     const rowPoints=[points[i]];
@@ -2754,30 +2764,32 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
     const loaded=[];
     for(const p of rowPoints){
       const {img,url}=await loadImageElement(p.blob);
-      const imgH=colW*(img.naturalHeight/img.naturalWidth);
-      loaded.push({p,img,url,imgH});
+      let drawW=colW,drawH=colW*(img.naturalHeight/img.naturalWidth);
+      if(drawH>maxPhotoH){drawH=maxPhotoH;drawW=maxPhotoH*(img.naturalWidth/img.naturalHeight);}
+      loaded.push({p,img,url,drawW,drawH});
     }
     const captionH=15;
-    const rowH=Math.max(...loaded.map(l=>l.imgH))+captionH;
+    const rowH=Math.max(...loaded.map(l=>l.drawH))+captionH;
     if(cursorY+rowH>maxY){
       doc.addPage('a4','portrait');
       cursorY=drawPhotoPageHeader(doc,210,mp,projectTitle);
     }
     loaded.forEach((l,idx)=>{
-      const x=colXs[idx],num=i+idx+1;
+      const colX=colXs[idx],num=i+idx+1,x=colX+(colW-l.drawW)/2;
       doc.setFillColor(215);
-      doc.roundedRect(x+1,cursorY+1.3,colW,l.imgH,1.2,1.2,'F');
-      doc.addImage(l.img,'JPEG',x,cursorY,colW,l.imgH);
+      doc.roundedRect(x+1,cursorY+1.3,l.drawW,l.drawH,1.2,1.2,'F');
+      doc.addImage(l.img,'JPEG',x,cursorY,l.drawW,l.drawH);
       doc.setDrawColor(200);doc.setLineWidth(0.25);
-      doc.rect(x,cursorY,colW,l.imgH);
-      doc.setFillColor(...PDF_COL_BLUE);doc.setDrawColor(20,80,120);doc.setLineWidth(0.3);
+      doc.rect(x,cursorY,l.drawW,l.drawH);
+      doc.setFillColor(255);doc.circle(x+5,cursorY+5,4.6,'F');
+      doc.setFillColor(...PDF_COL_BLUE);doc.setDrawColor(20,80,120);doc.setLineWidth(0.35);
       doc.circle(x+5,cursorY+5,4,'FD');
       doc.setTextColor(255);doc.setFontSize(8);doc.setFont('helvetica','bold');
       doc.text(String(num),x+5,cursorY+6.3,{align:'center'});
       doc.setTextColor(20);doc.setFont('helvetica','bold');doc.setFontSize(9.5);
-      doc.text(l.p.displayName,x,cursorY+l.imgH+5.5,{maxWidth:colW});
+      doc.text(l.p.displayName,colX,cursorY+l.drawH+5.5,{maxWidth:colW});
       doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(130);
-      doc.text('N '+l.p.lat.toFixed(5)+'  E '+l.p.lon.toFixed(5),x,cursorY+l.imgH+9.7,{maxWidth:colW});
+      doc.text('N '+l.p.lat.toFixed(5)+'  E '+l.p.lon.toFixed(5),colX,cursorY+l.drawH+9.7,{maxWidth:colW});
       doc.setTextColor(0);
       URL.revokeObjectURL(l.url);
     });
