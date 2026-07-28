@@ -2699,66 +2699,163 @@ function rpJpeg(canvas,q){
   try{return canvas.toDataURL('image/jpeg',q||0.92);}catch(e){return canvas;}
 }
 
-// Répartit les repères qui se chevaucheraient visuellement (points GPS proches
-// vus à l'échelle du plan imprimé) autour de leur position réelle, sans jamais
-// déplacer le point réel : seul le repère est décalé, relié par une ligne fine
-// à un petit point marquant la position exacte.
+// Place les repères numérotés autour des positions relevées. Le repère n'est
+// jamais posé SUR son point : il est systématiquement déporté et relié par un
+// segment terminé par un point qui, lui, marque la position exacte. La lecture
+// est ainsi toujours la même — le chiffre se lit dans le dégagement, la mesure
+// se lit au bout du trait — au lieu de dépendre de la densité locale, où un
+// repère posé sur son point masquait justement ce qu'il désignait.
 //
-// Relaxation itérative plutôt qu'un simple éventail par groupe de proximité :
-// un éventail calculé uniquement à partir des membres d'un groupe peut très
-// bien écarter l'un d'eux droit sur un point voisin qui n'appartenait pas à ce
-// groupe (repéré à l'inspection du rendu — deux repères se retrouvaient à
-// 5 mm l'un de l'autre alors que chacun, pris séparément, respectait bien la
-// distance minimale avec son propre groupe). La relaxation réexamine TOUTES
-// les paires à chaque passe, group ou non, donc un nouveau chevauchement créé
-// par un déplacement est corrigé à la passe suivante — convergence garantie
-// pour les tailles de groupes rencontrées en pratique (quelques unités).
+// Trois contraintes, relâchées ensemble à chaque passe :
+//   1. longueur du segment tenue entre LEAD_MIN et LEAD_MAX, pour que le trait
+//      et son point sortent franchement du halo du repère (rayon 4,55 mm) sans
+//      partir à l'autre bout du plan ;
+//   2. distance minimale entre deux repères (leur diamètre visuel) ;
+//   3. dégagement entre un repère et le point exact d'un AUTRE repère, sinon un
+//      chiffre vient se poser pile sur la position qu'il ne désigne pas.
+// Toutes les paires sont réexaminées à chaque passe : un conflit créé par un
+// déplacement est corrigé à la passe suivante.
 function computeLabelLayout(projected,planX,planY,planW,planH){
   const n=projected.length;
-  const minDist=9.3; // Ø visuel du repère (halo inclus) : distance mini entre centres
-  const margin=9;
+  // Le Ø visuel d'un repère est de 9,1 mm (rayon 3,5 + halo 1,05) : 11,6 mm
+  // entre centres laisse donc 2,5 mm de blanc franc entre deux voisins, là où
+  // s'en tenir au diamètre les rendait tangents — lisibles à la loupe, collés à
+  // l'œil. Le segment, lui, doit dépasser du halo de plusieurs millimètres pour
+  // se voir : 9,5 mm de long en laissent 5 apparents.
+  const MARK_MIN=11.6;
+  // Le segment peut s'allonger avec le nombre de repères : n repères espacés de
+  // MARK_MIN autour d'un même amas demandent un rayon d'au moins n·MARK_MIN/2π.
+  // Sans cette marge, la contrainte de longueur et celle d'écartement deviennent
+  // contradictoires au-delà de neuf points confondus, et c'est l'écartement qui
+  // cède — soit exactement ce qu'on cherche à éviter.
+  const LEAD_MIN=9.5,LEAD_MAX=Math.max(18,(MARK_MIN*n)/(2*Math.PI)+4);
+  const CLEAR_PT=5.4;   // dégagement repère / point exact voisin
+  // Marge de cadre au plus juste : le halo du repère fait 4,55 mm de rayon, 6,5
+  // suffisent donc à le garder entièrement dans le plan. Une marge plus large
+  // n'apportait rien et privait de place les amas tombant près d'un bord, où
+  // chaque millimètre d'arc compte pour écarter les repères.
+  const margin=6.5;
   const minX=planX+margin,maxX=planX+planW-margin,minY=planY+margin,maxY=planY+planH-margin;
-  const pos=projected.map(p=>({x:p.x,y:p.y}));
+  const clampX=v=>Math.min(maxX,Math.max(minX,v));
+  const clampY=v=>Math.min(maxY,Math.max(minY,v));
 
-  for(let iter=0;iter<60;iter++){
-    let overlap=false;
+  // Direction de départ : à l'opposé des points voisins, pondérés par l'inverse
+  // du carré de la distance, pour que chaque segment sorte du côté dégagé de son
+  // propre amas. Se caler sur le seul barycentre général donnait à trois points
+  // serrés trois directions quasi identiques : les repères finissaient alignés
+  // en file au lieu de s'ouvrir en étoile. Repli sur le barycentre puis sur un
+  // angle déterministe (points isolés ou parfaitement symétriques), pour rester
+  // reproductible d'un rendu à l'autre.
+  const cx=projected.reduce((s,p)=>s+p.x,0)/n,cy=projected.reduce((s,p)=>s+p.y,0)/n;
+  const dirOf=i=>{
+    let vx=0,vy=0;
+    for(let j=0;j<n;j++){
+      if(j===i)continue;
+      const dx=projected[i].x-projected[j].x,dy=projected[i].y-projected[j].y;
+      const d=Math.hypot(dx,dy);
+      if(d<0.01||d>28)continue;
+      vx+=dx/(d*d);vy+=dy/(d*d);
+    }
+    let d=Math.hypot(vx,vy);
+    if(d<1e-4){vx=projected[i].x-cx;vy=projected[i].y-cy;d=Math.hypot(vx,vy);}
+    if(d<0.5){const a=i*2.399963+2.2;return [Math.cos(a),Math.sin(a)];}
+    return [vx/d,vy/d];
+  };
+  // Longueur de départ ajustée à l'encombrement local : k repères à placer
+  // autour d'un même amas demandent un rayon d'au moins k·MARK_MIN/2π. Partir
+  // systématiquement de LEAD_MIN posait les repères d'un amas serré sur un cercle
+  // trop petit pour eux ; les poussées d'écartement, tangentes à ce cercle, ne
+  // l'élargissaient pas et une douzaine de prises de vue faites du même endroit
+  // restaient collées quel que soit le nombre de passes.
+  // Amas locaux : les repères d'un même amas partent en éventail régulier, sur un
+  // rayon dimensionné pour eux (k repères espacés de MARK_MIN demandent au moins
+  // k·MARK_MIN/2π). Les poussées d'écartement, tangentes au cercle de départ, ne
+  // savent pas l'élargir ni séparer des repères partis dans la même direction :
+  // une douzaine de prises de vue faites du même endroit restaient collées quel
+  // que soit le nombre de passes. L'éventail règle les deux d'emblée, la
+  // relaxation n'a plus qu'à corriger les conflits entre amas voisins.
+  const near=projected.map((p,i)=>{
+    const g=[];
+    for(let j=0;j<n;j++)if(Math.hypot(p.x-projected[j].x,p.y-projected[j].y)<LEAD_MIN*1.6)g.push(j);
+    return g;
+  });
+  const pos=projected.map((p,i)=>{
+    const g=near[i],k=g.length;
+    const [ux,uy]=dirOf(k>1?g[0]:i);
+    const ang=Math.atan2(uy,ux)+(k>1?(2*Math.PI*g.indexOf(i))/k:0);
+    const r=Math.max(LEAD_MIN,Math.min(LEAD_MAX,(MARK_MIN*k)/(2*Math.PI)+0.6));
+    return {x:clampX(p.x+Math.cos(ang)*r),y:clampY(p.y+Math.sin(ang)*r)};
+  });
+
+  // Ordre des contraintes dans la passe : la longueur du segment d'abord, les
+  // conflits entre repères ensuite. L'inverse laissait le rappel radial défaire
+  // l'écartement tout juste obtenu, et des repères restaient superposés dans les
+  // amas denses.
+  for(let iter=0;iter<120;iter++){
+    let moved=false;
+    for(let i=0;i<n;i++){
+      const dx=pos[i].x-projected[i].x,dy=pos[i].y-projected[i].y;
+      let d=Math.hypot(dx,dy),ux,uy;
+      if(d<0.01){const [a,b]=dirOf(i);ux=a;uy=b;d=0.01;}else{ux=dx/d;uy=dy/d;}
+      const lead=d<LEAD_MIN?LEAD_MIN:d>LEAD_MAX?LEAD_MAX:d;
+      if(lead!==d){
+        moved=true;
+        pos[i].x=projected[i].x+ux*lead;pos[i].y=projected[i].y+uy*lead;
+      }
+    }
     for(let i=0;i<n;i++){
       for(let j=i+1;j<n;j++){
         const dx=pos[j].x-pos[i].x,dy=pos[j].y-pos[i].y;
         let dist=Math.hypot(dx,dy);
-        if(dist>=minDist)continue;
-        overlap=true;
+        if(dist>=MARK_MIN)continue;
+        moved=true;
         let ux,uy;
         if(dist<0.01){
-          // Points confondus : direction déterministe (dépend des indices) pour
-          // ne jamais diviser par zéro et rester reproductible d'un rendu à l'autre.
           const a=(i*2.399963+j*0.618034)*Math.PI;
           ux=Math.cos(a);uy=Math.sin(a);dist=0.01;
-        }else{
-          ux=dx/dist;uy=dy/dist;
-        }
-        const push=(minDist-dist)/2+0.1;
+        }else{ux=dx/dist;uy=dy/dist;}
+        const push=(MARK_MIN-dist)/2+0.1;
         pos[i].x-=ux*push;pos[i].y-=uy*push;
         pos[j].x+=ux*push;pos[j].y+=uy*push;
       }
     }
-    for(let i=0;i<n;i++){
-      pos[i].x=Math.min(maxX,Math.max(minX,pos[i].x));
-      pos[i].y=Math.min(maxY,Math.max(minY,pos[i].y));
+    for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+      if(i===j)continue;
+      const dx=pos[i].x-projected[j].x,dy=pos[i].y-projected[j].y;
+      const dist=Math.hypot(dx,dy);
+      if(dist>=CLEAR_PT)continue;
+      moved=true;
+      const a=dist<0.01?(i*1.7+j*0.9):Math.atan2(dy,dx);
+      const ux=dist<0.01?Math.cos(a):dx/dist,uy=dist<0.01?Math.sin(a):dy/dist;
+      pos[i].x+=ux*(CLEAR_PT-dist+0.1);pos[i].y+=uy*(CLEAR_PT-dist+0.1);
     }
-    if(!overlap)break;
+    for(let i=0;i<n;i++){
+      pos[i].x=clampX(pos[i].x);pos[i].y=clampY(pos[i].y);
+    }
+    if(!moved)break;
   }
 
-  // "Décalé" (avec ligne de rappel) seulement si la position réelle sort du
-  // halo du repère (rayon 3,5 + halo 1,05 = 4,55 mm) : en-deçà, le point exact
-  // est de toute façon entièrement recouvert par le repère lui-même — dessiner
-  // une ligne de rappel ne serait ni visible ni utile, juste un point qui
-  // dépasserait à peine du bord sans qu'on comprenne ce qu'il indique.
-  const haloR=4.55;
-  return pos.map((p,i)=>({
-    x:p.x,y:p.y,
-    offset:Math.hypot(p.x-projected[i].x,p.y-projected[i].y)>haloR+0.4
-  }));
+  // Rattrapage des repères que le recadrage a ramenés sur leur point (bord de
+  // cadre) : on essaie tout le tour et on garde la direction la plus dégagée,
+  // celle qui laisse le trait visible sans venir buter sur un voisin.
+  for(let i=0;i<n;i++){
+    if(Math.hypot(pos[i].x-projected[i].x,pos[i].y-projected[i].y)>=LEAD_MIN-0.5)continue;
+    let best=null,bestScore=-Infinity;
+    for(let k=0;k<16;k++){
+      const a=k*Math.PI/8;
+      const x=clampX(projected[i].x+Math.cos(a)*LEAD_MIN);
+      const y=clampY(projected[i].y+Math.sin(a)*LEAD_MIN);
+      let score=Math.hypot(x-projected[i].x,y-projected[i].y)*2;
+      for(let j=0;j<n;j++){
+        if(j===i)continue;
+        score+=Math.min(MARK_MIN,Math.hypot(x-pos[j].x,y-pos[j].y));
+        score+=Math.min(CLEAR_PT,Math.hypot(x-projected[j].x,y-projected[j].y));
+      }
+      if(score>bestScore){bestScore=score;best={x,y};}
+    }
+    if(best)pos[i]=best;
+  }
+  return pos;
 }
 
 // Vue de situation : fond Plan IGN élargi autour du site. La récupération est
@@ -2929,15 +3026,15 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const projected=points.map(p=>{const [x,y]=project(p.lon,p.lat);return {x,y};});
   const labels=computeLabelLayout(projected,mapX,mapY,mapW,mapH);
 
-  // Lignes de rappel + point exact pour les repères décalés.
+  // Segment de rappel + point de position exacte, pour chaque prise de vue sans
+  // exception : c'est ce point, et non le repère chiffré, qui donne la position.
   labels.forEach((l,i)=>{
-    if(!l.offset)return;
-    doc.setDrawColor(...RP.paper);doc.setLineWidth(0.8);
+    doc.setDrawColor(...RP.paper);doc.setLineWidth(0.85);
     doc.line(projected[i].x,projected[i].y,l.x,l.y);
-    doc.setDrawColor(...RP.dataDark);doc.setLineWidth(0.28);
+    doc.setDrawColor(...RP.dataDark);doc.setLineWidth(0.3);
     doc.line(projected[i].x,projected[i].y,l.x,l.y);
-    doc.setFillColor(...RP.paper);doc.circle(projected[i].x,projected[i].y,0.9,'F');
-    doc.setFillColor(...RP.dataDark);doc.circle(projected[i].x,projected[i].y,0.5,'F');
+    doc.setFillColor(...RP.paper);doc.circle(projected[i].x,projected[i].y,1.15,'F');
+    doc.setFillColor(...RP.dataDark);doc.circle(projected[i].x,projected[i].y,0.62,'F');
   });
   points.forEach((p,i)=>rpMarker(doc,labels[i].x,labels[i].y,i+1,3.5));
 
@@ -2970,6 +3067,14 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   rpMarker(doc,cx0+3.6,cy+0.6,'1',3.4);
   doc.setFont(RP_F,'normal');doc.setFontSize(6.8);doc.setTextColor(...RP.inkSoft);
   doc.text('Prise de vue photographique',cx0+9.4,cy+1.8);
+  cy+=7.4;
+  // Le repère étant toujours déporté, la légende doit dire où se lit la position.
+  doc.setDrawColor(...RP.dataDark);doc.setLineWidth(0.3);
+  doc.line(cx0+1.4,cy+0.9,cx0+6.2,cy+0.9);
+  doc.setFillColor(...RP.paper);doc.circle(cx0+1.4,cy+0.9,1.15,'F');
+  doc.setFillColor(...RP.dataDark);doc.circle(cx0+1.4,cy+0.9,0.62,'F');
+  doc.setTextColor(...RP.inkSoft);
+  doc.text('Position relevée, au bout du trait',cx0+9.4,cy+1.8);
   cy+=7.4;
   if(situation){
     doc.setDrawColor(...RP.data);doc.setLineWidth(0.7);
