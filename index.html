@@ -2561,54 +2561,65 @@ function rpScaleBar(doc,x,y,spanMeters,mapWmm){
 }
 
 // Répartit les repères qui se chevaucheraient visuellement (points GPS proches
-// vus à l'échelle du plan imprimé) en éventail autour de leur position réelle,
-// sans jamais déplacer le point réel : seul le repère est décalé, relié par une
-// ligne fine à un petit point marquant la position exacte.
+// vus à l'échelle du plan imprimé) autour de leur position réelle, sans jamais
+// déplacer le point réel : seul le repère est décalé, relié par une ligne fine
+// à un petit point marquant la position exacte.
+//
+// Relaxation itérative plutôt qu'un simple éventail par groupe de proximité :
+// un éventail calculé uniquement à partir des membres d'un groupe peut très
+// bien écarter l'un d'eux droit sur un point voisin qui n'appartenait pas à ce
+// groupe (repéré à l'inspection du rendu — deux repères se retrouvaient à
+// 5 mm l'un de l'autre alors que chacun, pris séparément, respectait bien la
+// distance minimale avec son propre groupe). La relaxation réexamine TOUTES
+// les paires à chaque passe, group ou non, donc un nouveau chevauchement créé
+// par un déplacement est corrigé à la passe suivante — convergence garantie
+// pour les tailles de groupes rencontrées en pratique (quelques unités).
 function computeLabelLayout(projected,planX,planY,planW,planH){
   const n=projected.length;
-  const badgeDiam=11.5; // Ø visuel du repère (halo inclus) : seuil de chevauchement
-  const parent=Array.from({length:n},(_,i)=>i);
-  function find(a){while(parent[a]!==a){parent[a]=parent[parent[a]];a=parent[a];}return a;}
-  function union(a,b){const ra=find(a),rb=find(b);if(ra!==rb)parent[ra]=rb;}
-  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
-    if(Math.hypot(projected[i].x-projected[j].x,projected[i].y-projected[j].y)<badgeDiam)union(i,j);
-  }
-  const groups={};
-  for(let i=0;i<n;i++){const r=find(i);(groups[r]=groups[r]||[]).push(i);}
-
+  const minDist=9.3; // Ø visuel du repère (halo inclus) : distance mini entre centres
   const margin=9;
   const minX=planX+margin,maxX=planX+planW-margin,minY=planY+margin,maxY=planY+planH-margin;
-  const out=new Array(n);
-  Object.values(groups).forEach(idxs=>{
-    if(idxs.length===1){
-      const i=idxs[0];
-      out[i]={x:projected[i].x,y:projected[i].y,offset:false};
-      return;
+  const pos=projected.map(p=>({x:p.x,y:p.y}));
+
+  for(let iter=0;iter<60;iter++){
+    let overlap=false;
+    for(let i=0;i<n;i++){
+      for(let j=i+1;j<n;j++){
+        const dx=pos[j].x-pos[i].x,dy=pos[j].y-pos[i].y;
+        let dist=Math.hypot(dx,dy);
+        if(dist>=minDist)continue;
+        overlap=true;
+        let ux,uy;
+        if(dist<0.01){
+          // Points confondus : direction déterministe (dépend des indices) pour
+          // ne jamais diviser par zéro et rester reproductible d'un rendu à l'autre.
+          const a=(i*2.399963+j*0.618034)*Math.PI;
+          ux=Math.cos(a);uy=Math.sin(a);dist=0.01;
+        }else{
+          ux=dx/dist;uy=dy/dist;
+        }
+        const push=(minDist-dist)/2+0.1;
+        pos[i].x-=ux*push;pos[i].y-=uy*push;
+        pos[j].x+=ux*push;pos[j].y+=uy*push;
+      }
     }
-    const cx=idxs.reduce((s,i)=>s+projected[i].x,0)/idxs.length;
-    const cy=idxs.reduce((s,i)=>s+projected[i].y,0)/idxs.length;
-    // Écartement volontairement plus large que le strict minimum anti-chevauchement.
-    // Le rayon plancher garantit une amorce de ligne réellement visible entre le
-    // point exact et le repère : rayon du repère (4,6) + son halo (1,05) + le
-    // point (0,9) + ~4 mm de trait apparent, sinon la ligne se réduit à un moignon
-    // caché sous le halo et la correspondance devient illisible.
-    const fanSpacing=14;
-    const r=Math.max(11.5,fanSpacing/(2*Math.sin(Math.PI/idxs.length)));
-    // Les repères sont posés dans l'ordre angulaire réel des points, en calant
-    // l'éventail sur l'orientation du premier : chaque repère part ainsi du côté
-    // où se trouve vraiment son point, ce qui évite des lignes de rappel qui se
-    // croisent en travers du groupe.
-    const bearing=i=>Math.atan2(projected[i].y-cy,projected[i].x-cx);
-    const ordered=idxs.slice().sort((a,b)=>bearing(a)-bearing(b));
-    const base=bearing(ordered[0]);
-    ordered.forEach((i,k)=>{
-      const angle=base+(2*Math.PI*k)/ordered.length;
-      const x=Math.min(maxX,Math.max(minX,cx+r*Math.cos(angle)));
-      const y=Math.min(maxY,Math.max(minY,cy+r*Math.sin(angle)));
-      out[i]={x,y,offset:true};
-    });
-  });
-  return out;
+    for(let i=0;i<n;i++){
+      pos[i].x=Math.min(maxX,Math.max(minX,pos[i].x));
+      pos[i].y=Math.min(maxY,Math.max(minY,pos[i].y));
+    }
+    if(!overlap)break;
+  }
+
+  // "Décalé" (avec ligne de rappel) seulement si la position réelle sort du
+  // halo du repère (rayon 3,5 + halo 1,05 = 4,55 mm) : en-deçà, le point exact
+  // est de toute façon entièrement recouvert par le repère lui-même — dessiner
+  // une ligne de rappel ne serait ni visible ni utile, juste un point qui
+  // dépasserait à peine du bord sans qu'on comprenne ce qu'il indique.
+  const haloR=4.55;
+  return pos.map((p,i)=>({
+    x:p.x,y:p.y,
+    offset:Math.hypot(p.x-projected[i].x,p.y-projected[i].y)>haloR+0.4
+  }));
 }
 
 // Vue de situation : fond Plan IGN élargi autour du site. La récupération est
@@ -2771,7 +2782,7 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
     doc.setFillColor(...RP.paper);doc.circle(projected[i].x,projected[i].y,0.9,'F');
     doc.setFillColor(...RP.dataDark);doc.circle(projected[i].x,projected[i].y,0.5,'F');
   });
-  points.forEach((p,i)=>rpMarker(doc,labels[i].x,labels[i].y,i+1,4.6));
+  points.forEach((p,i)=>rpMarker(doc,labels[i].x,labels[i].y,i+1,3.5));
 
   rpNorthArrow(doc,mapX+11,mapY+12,6.4);
   rpScaleBar(doc,mapX+5,mapY+mapH-19,mxMax-mxMin,mapW);
