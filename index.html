@@ -2615,6 +2615,13 @@ function rpScaleBar(doc,x,y,spanMeters,mapWmm){
 // tuiles.
 const RP_DPI_FETCH=240,RP_DPI_PRINT=300,RP_DPI_MIN=120;
 
+// Rayon du repère chiffré du plan, et rayon de son halo blanc. Le repère est
+// volontairement petit : il ne porte qu'un numéro d'index, la position exacte
+// étant lue au bout de son trait de rappel. Un repère plus gros mangeait le fond
+// de carte qu'il est censé qualifier. Tout l'espacement du plan se déduit de ces
+// deux valeurs, elles ne sont donc à changer qu'ici.
+const RP_MARK_R=2.8,RP_MARK_HALO=RP_MARK_R+1.05;
+
 // Retouche de l'orthophoto pour le papier. Une prise de vue aérienne brute
 // s'imprime terne : le contraste s'écrase, les toitures et la voirie virent au
 // gris et les limites de parcelle deviennent difficiles à suivre. Trois
@@ -2717,24 +2724,23 @@ function rpJpeg(canvas,q){
 // déplacement est corrigé à la passe suivante.
 function computeLabelLayout(projected,planX,planY,planW,planH){
   const n=projected.length;
-  // Le Ø visuel d'un repère est de 9,1 mm (rayon 3,5 + halo 1,05) : 11,6 mm
-  // entre centres laisse donc 2,5 mm de blanc franc entre deux voisins, là où
-  // s'en tenir au diamètre les rendait tangents — lisibles à la loupe, collés à
-  // l'œil. Le segment, lui, doit dépasser du halo de plusieurs millimètres pour
-  // se voir : 9,5 mm de long en laissent 5 apparents.
-  const MARK_MIN=11.6;
+  // Tout se déduit du halo du repère (RP_MARK_HALO) : 2,5 mm de blanc franc
+  // entre deux voisins, là où s'en tenir au diamètre les rendait tangents —
+  // lisibles à la loupe, collés à l'œil ; et un segment assez long pour dépasser
+  // du halo de 5 mm, sans quoi il ne se voit pas.
+  const MARK_MIN=RP_MARK_HALO*2+2.5;
   // Le segment peut s'allonger avec le nombre de repères : n repères espacés de
   // MARK_MIN autour d'un même amas demandent un rayon d'au moins n·MARK_MIN/2π.
   // Sans cette marge, la contrainte de longueur et celle d'écartement deviennent
   // contradictoires au-delà de neuf points confondus, et c'est l'écartement qui
   // cède — soit exactement ce qu'on cherche à éviter.
-  const LEAD_MIN=9.5,LEAD_MAX=Math.max(18,(MARK_MIN*n)/(2*Math.PI)+4);
-  const CLEAR_PT=5.4;   // dégagement repère / point exact voisin
-  // Marge de cadre au plus juste : le halo du repère fait 4,55 mm de rayon, 6,5
-  // suffisent donc à le garder entièrement dans le plan. Une marge plus large
-  // n'apportait rien et privait de place les amas tombant près d'un bord, où
-  // chaque millimètre d'arc compte pour écarter les repères.
-  const margin=6.5;
+  const LEAD_MIN=RP_MARK_HALO+5,LEAD_MAX=Math.max(18,(MARK_MIN*n)/(2*Math.PI)+4);
+  const CLEAR_PT=RP_MARK_HALO+1.15; // le point exact d'un voisin reste hors du halo
+  // Marge de cadre au plus juste : de quoi garder le halo entièrement dans le
+  // plan, pas davantage. Une marge plus large n'apportait rien et privait de
+  // place les amas tombant près d'un bord, où chaque millimètre d'arc compte
+  // pour écarter les repères.
+  const margin=RP_MARK_HALO+2;
   const minX=planX+margin,maxX=planX+planW-margin,minY=planY+margin,maxY=planY+planH-margin;
   const clampX=v=>Math.min(maxX,Math.max(minX,v));
   const clampY=v=>Math.min(maxY,Math.max(minY,v));
@@ -3036,7 +3042,7 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
     doc.setFillColor(...RP.paper);doc.circle(projected[i].x,projected[i].y,1.15,'F');
     doc.setFillColor(...RP.dataDark);doc.circle(projected[i].x,projected[i].y,0.62,'F');
   });
-  points.forEach((p,i)=>rpMarker(doc,labels[i].x,labels[i].y,i+1,3.5));
+  points.forEach((p,i)=>rpMarker(doc,labels[i].x,labels[i].y,i+1,RP_MARK_R));
 
   rpNorthArrow(doc,mapX+11,mapY+12,6.4);
   rpScaleBar(doc,mapX+5,mapY+mapH-19,mxMax-mxMin,mapW);
@@ -3064,7 +3070,7 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   }
 
   cy=rpLabel(doc,'Légende',cx0,cy,cw0);
-  rpMarker(doc,cx0+3.6,cy+0.6,'1',3.4);
+  rpMarker(doc,cx0+3.6,cy+0.6,'1',RP_MARK_R);
   doc.setFont(RP_F,'normal');doc.setFontSize(6.8);doc.setTextColor(...RP.inkSoft);
   doc.text('Prise de vue photographique',cx0+9.4,cy+1.8);
   cy+=7.4;
