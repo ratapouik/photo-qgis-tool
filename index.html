@@ -675,11 +675,21 @@ function lonLatToTileXY(lon,lat,z){
   const y=(1-Math.log(Math.tan(latRad)+1/Math.cos(latRad))/Math.PI)/2*n;
   return [x,y];
 }
+// Couche orthophoto IGN utilisée partout (fond du plan PDF et projet QGIS) :
+// la mosaïque générale, pas un millésime. Les couches annuelles
+// (ORTHOIMAGERY.ORTHOPHOTOS2024, 2023…) ne couvrent que les départements
+// survolés cette année-là : ailleurs elles ne renvoient aucune tuile et le plan
+// se retrouve sans fond de carte. La mosaïque générale couvre tout le
+// territoire avec, en chaque point, la meilleure prise de vue disponible — donc
+// aussi les secteurs livrés en très haute résolution, que les millésimes
+// nationaux ne contiennent pas.
+const IGN_ORTHO_LAYER='ORTHOIMAGERY.ORTHOPHOTOS';
+
 // Choisit le zoom nécessaire pour que la mosaïque de tuiles fournisse au moins
 // la résolution demandée (en pixels, pour la taille d'impression visée) —
 // plutôt que de réduire le zoom pour limiter le nombre de tuiles (ce qui
 // pixeliserait l'image une fois étirée sur le cadre). "minZoom" garantit un
-// niveau de détail plancher ; "maxZoom" est la limite de l'orthophoto IGN (19).
+// niveau de détail plancher ; "maxZoom" borne la demande.
 function pickZoomForSpan(mercSpan,targetPixels,minZoom,maxZoom){
   const worldMerc=2*Math.PI*6378137; // circonférence terrestre en mètres Web Mercator
   const needed=Math.ceil(Math.log2((worldMerc*targetPixels)/(256*mercSpan)));
@@ -691,67 +701,90 @@ function pickZoomForSpan(mercSpan,targetPixels,minZoom,maxZoom){
 // CORS permissifs (canvas "taché"), ou si l'utilisateur est hors ligne — dans
 // tous les cas on retombe silencieusement sur le plan schématique existant.
 async function tryFetchIgnBasemap(lonMin,latMin,lonMax,latMax,zoom,maxTiles,minZoom,layer,format){
-  layer=layer||'ORTHOIMAGERY.ORTHOPHOTOS2024';
+  layer=layer||IGN_ORTHO_LAYER;
   format=format||'image/jpeg';
   if(typeof navigator!=='undefined'&&navigator.onLine===false)return null;
   maxTiles=maxTiles||140;
   const HARD_MAX_TILES=420; // garde-fou absolu, même pour rester au zoom minimal demandé
+  const TILE=256;
+  const floorZoom=Math.max(6,minZoom==null?6:minZoom);
   try{
-    const TILE=256;
-    let z=zoom;
-    let xMinF,yMinF,xMaxF,yMaxF,xTile0,xTile1,yTile0,yTile1,nx,ny;
+    // Grille de tuiles couvrant la bbox au zoom donné.
+    const gridAt=z=>{
+      const [xMinF,yMinF]=lonLatToTileXY(lonMin,latMax,z);
+      const [xMaxF,yMaxF]=lonLatToTileXY(lonMax,latMin,z);
+      const xTile0=Math.floor(xMinF),yTile0=Math.floor(yMinF);
+      const nx=Math.floor(xMaxF)-xTile0+1,ny=Math.floor(yMaxF)-yTile0+1;
+      if(nx<=0||ny<=0)return null;
+      return {z,xMinF,yMinF,xMaxF,yMaxF,xTile0,yTile0,nx,ny};
+    };
+    const loadGrid=g=>{
+      const tiles=[];
+      for(let ty=0;ty<g.ny;ty++)for(let tx=0;tx<g.nx;tx++)tiles.push({tx,ty,col:g.xTile0+tx,row:g.yTile0+ty});
+      return mapWithConcurrency(tiles,6,async t=>{
+        const url='https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile'
+          +'&LAYER='+layer+'&STYLE=normal&TILEMATRIXSET=PM'
+          +'&TILEMATRIX='+g.z+'&TILEROW='+t.row+'&TILECOL='+t.col+'&FORMAT='+format;
+        try{
+          const img=new Image();
+          img.crossOrigin='anonymous';
+          const ready=new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('tuile illisible'));});
+          img.src=url;
+          await Promise.race([ready,new Promise((_,rej)=>setTimeout(()=>rej(new Error('délai dépassé')),10000))]);
+          return {...t,img};
+        }catch(e){return {...t,img:null};}
+      });
+    };
+
     // Si le nombre de tuiles au zoom demandé dépasse le plafond de sécurité,
     // on réduit le zoom pas à pas (cas extrême : emprise très large) plutôt
     // que de renoncer — la priorité reste d'afficher un fond de carte. On ne
     // descend en revanche jamais sous minZoom (résolution minimale imposée par
     // l'appelant pour éviter la pixélisation) : au-delà, mieux vaut un repli
     // complet sur le plan schématique qu'un fond de carte flou.
-    do{
-      [xMinF,yMinF]=lonLatToTileXY(lonMin,latMax,z);
-      [xMaxF,yMaxF]=lonLatToTileXY(lonMax,latMin,z);
-      xTile0=Math.floor(xMinF);xTile1=Math.floor(xMaxF);
-      yTile0=Math.floor(yMinF);yTile1=Math.floor(yMaxF);
-      nx=xTile1-xTile0+1;ny=yTile1-yTile0+1;
-      if(nx*ny<=maxTiles)break;
-      if(minZoom!=null&&z<=minZoom)break;
-      z--;
-    }while(z>=6);
-    if(nx<=0||ny<=0||z<6||nx*ny>HARD_MAX_TILES)return null;
+    let g=gridAt(zoom);
+    while(g&&g.nx*g.ny>maxTiles&&g.z>floorZoom)g=gridAt(g.z-1);
+    if(!g||g.nx*g.ny>HARD_MAX_TILES)return null;
 
-    const tiles=[];
-    for(let ty=0;ty<ny;ty++)for(let tx=0;tx<nx;tx++)tiles.push({tx,ty,col:xTile0+tx,row:yTile0+ty});
-
-    const loaded=await mapWithConcurrency(tiles,6,async t=>{
-      const url='https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile'
-        +'&LAYER='+layer+'&STYLE=normal&TILEMATRIXSET=PM'
-        +'&TILEMATRIX='+z+'&TILEROW='+t.row+'&TILECOL='+t.col+'&FORMAT='+format;
-      try{
-        const img=new Image();
-        img.crossOrigin='anonymous';
-        const ready=new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error('tuile illisible'));});
-        img.src=url;
-        await Promise.race([ready,new Promise((_,rej)=>setTimeout(()=>rej(new Error('délai dépassé')),10000))]);
-        return {...t,img};
-      }catch(e){return {...t,img:null};}
-    });
-
-    if(!loaded.some(t=>t.img))return null;
+    // Le niveau de détail réellement servi dépend du secteur : la mosaïque
+    // générale monte plus haut là où l'IGN dispose de prises de vue très haute
+    // résolution qu'ailleurs. On demande donc le zoom idéal pour l'impression,
+    // puis on redescend d'un cran tant que la dalle revient vide ou largement
+    // lacunaire. Sans ce repli, viser un zoom élevé se paierait par un plan
+    // sans fond de carte du tout dès que le secteur ne le sert pas.
+    let loaded=null;
+    for(;;){
+      loaded=await loadGrid(g);
+      const ok=loaded.reduce((n,t)=>n+(t.img?1:0),0);
+      // Quelques trous résiduels sont normaux en limite de couverture (littoral,
+      // frontière) : ils ne justifient pas de perdre un niveau de détail.
+      if(ok/loaded.length>=0.75)break;
+      const next=g.z>floorZoom?gridAt(g.z-1):null;
+      if(!next){if(!ok)return null;break;}
+      g=next;
+    }
 
     const canvas=document.createElement('canvas');
-    canvas.width=nx*TILE;canvas.height=ny*TILE;
+    canvas.width=g.nx*TILE;canvas.height=g.ny*TILE;
     const ctx=canvas.getContext('2d');
+    // Fond neutre avant l'assemblage : une tuile manquante doit se lire comme
+    // une zone sans donnée. Un canvas laissé transparent virerait au noir à la
+    // conversion JPEG, ce qui ressemblerait à un défaut d'impression.
+    ctx.fillStyle='#e9edf0';ctx.fillRect(0,0,canvas.width,canvas.height);
     loaded.forEach(t=>{if(t.img)ctx.drawImage(t.img,t.tx*TILE,t.ty*TILE,TILE,TILE);});
 
     // recadrage précis sur la bbox demandée (les tuiles couvrent une zone un peu plus large)
-    const cropX=(xMinF-xTile0)*TILE,cropY=(yMinF-yTile0)*TILE;
-    const cropW=(xMaxF-xMinF)*TILE,cropH=(yMaxF-yMinF)*TILE;
+    const cropX=(g.xMinF-g.xTile0)*TILE,cropY=(g.yMinF-g.yTile0)*TILE;
+    const cropW=(g.xMaxF-g.xMinF)*TILE,cropH=(g.yMaxF-g.yMinF)*TILE;
     const out=document.createElement('canvas');
     out.width=Math.max(1,Math.round(cropW));out.height=Math.max(1,Math.round(cropH));
-    out.getContext('2d').drawImage(canvas,cropX,cropY,cropW,cropH,0,0,out.width,out.height);
+    const octx=out.getContext('2d',{willReadFrequently:true});
+    octx.imageSmoothingEnabled=true;octx.imageSmoothingQuality='high';
+    octx.drawImage(canvas,cropX,cropY,cropW,cropH,0,0,out.width,out.height);
 
     // Si une tuile provient d'un serveur sans en-têtes CORS permissifs, le canvas
     // devient "taché" : la lecture ci-dessous échoue et on retombe sur le schéma.
-    out.getContext('2d').getImageData(0,0,1,1);
+    octx.getImageData(0,0,1,1);
     return out;
   }catch(e){
     return null;
@@ -778,6 +811,17 @@ function buildQGSProject(pts,projectTitle){
   const canvasExtent=[...toWebMercator(xn,yn),...toWebMercator(xx,yx)];
   const layerId='photos_'+Date.now();
   const wmtsId='ortho_ign_'+Date.now();
+  // Source WMTS de l'orthophoto, partagée par l'arbre des couches et la couche
+  // elle-même (les deux doivent être rigoureusement identiques, sinon QGIS
+  // charge deux fois le fond). Les "&" sont échappés : la chaîne est insérée
+  // telle quelle dans le XML du projet.
+  // tileMatrixSet=PM et non "PM_6_19" : ce dernier fige la pyramide au niveau 19
+  // alors que la mosaïque générale est servie plus finement sur les secteurs
+  // couverts en haute résolution. "PM" est l'identifiant réellement publié par
+  // le GetCapabilities, QGIS y lit lui-même les niveaux disponibles.
+  const wmtsSource='crs=EPSG:3857&amp;dpiMode=7&amp;featureCount=10&amp;format=image/jpeg'
+    +'&amp;layers='+IGN_ORTHO_LAYER+'&amp;styles=normal&amp;tileMatrixSet=PM&amp;tilePixelRatio=0'
+    +'&amp;url=https://data.geopf.fr/wmts-open/wmts?SERVICE%3DWMTS%26VERSION%3D1.0.0%26REQUEST%3DGetCapabilities';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <qgis projectname="${escapeAttr(projectTitle)}" version="3.40.5-Bratislava">
@@ -806,7 +850,7 @@ function buildQGSProject(pts,projectTitle){
         <Option/>
       </customproperties>
     </layer-tree-layer>
-    <layer-tree-layer id="${wmtsId}" name="Orthophotos IGN 2024" source="crs=EPSG:3857&amp;dpiMode=7&amp;featureCount=10&amp;format=image/jpeg&amp;layers=ORTHOIMAGERY.ORTHOPHOTOS2024&amp;styles=normal&amp;tileMatrixSet=PM_6_19&amp;tilePixelRatio=0&amp;url=https://data.geopf.fr/wmts-open/wmts?SERVICE%3DWMTS%26VERSION%3D1.0.0%26REQUEST%3DGetCapabilities" providerKey="wms" checked="Qt::Checked" expanded="0">
+    <layer-tree-layer id="${wmtsId}" name="Orthophotos IGN" source="${wmtsSource}" providerKey="wms" checked="Qt::Checked" expanded="0">
       <customproperties>
         <Option/>
       </customproperties>
@@ -936,8 +980,8 @@ function buildQGSProject(pts,projectTitle){
     </maplayer>
     <maplayer type="raster" maxScale="0" minScale="100000000" id="${wmtsId}" hasScaleBasedVisibilityFlag="0" autoRefreshEnabled="0" refreshOnNotifyEnabled="0" styleCategories="AllStyleCategories">
       <id>${wmtsId}</id>
-      <datasource>crs=EPSG:3857&amp;dpiMode=7&amp;featureCount=10&amp;format=image/jpeg&amp;layers=ORTHOIMAGERY.ORTHOPHOTOS2024&amp;styles=normal&amp;tileMatrixSet=PM_6_19&amp;tilePixelRatio=0&amp;url=https://data.geopf.fr/wmts-open/wmts?SERVICE%3DWMTS%26VERSION%3D1.0.0%26REQUEST%3DGetCapabilities</datasource>
-      <layername>Orthophotos IGN 2024</layername>
+      <datasource>${wmtsSource}</datasource>
+      <layername>Orthophotos IGN</layername>
       <srs>
         <spatialrefsys nativeFormat="Wkt">
           <wkt>PROJCRS["WGS 84 / Pseudo-Mercator",BASEGEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]]],CONVERSION["Popular Visualisation Pseudo-Mercator",METHOD["Popular Visualisation Pseudo Mercator",ID["EPSG",1024]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["Longitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["False easting",0,LENGTHUNIT["metre",1]],PARAMETER["False northing",0,LENGTHUNIT["metre",1]]],CS[Cartesian,2],AXIS["easting (X)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["northing (Y)",north,ORDER[2],LENGTHUNIT["metre",1]],ID["EPSG",3857]]</wkt>
@@ -2376,7 +2420,7 @@ async function buildSelectedContent(setStatus,setProgress){
       +'  1. Dézippez ce dossier\n'
       +'  2. Double-cliquez sur projet_photos.qgs\n'
       +'  3. QGIS s\'ouvre avec tout configuré :\n'
-      +'     - Fond de carte : Orthophotos IGN 2024 (WMTS)\n'
+      +'     - Fond de carte : Orthophotos IGN, mosaïque générale (WMTS)\n'
       +'     - Couche de points sur la carte (GeoJSON)\n'
       +'     - Infobulles avec aperçu photo au survol\n'
       +'     - Formulaire avec visionneuse photo au clic\n'
@@ -2560,6 +2604,101 @@ function rpScaleBar(doc,x,y,spanMeters,mapWmm){
   doc.setTextColor(0);
 }
 
+// Définition d'impression visée pour le fond de plan. La mosaïque est demandée
+// à RP_DPI_FETCH ; le zoom retenu étant le premier niveau qui atteint cette
+// cible, la dalle obtenue fait entre 1 et 2 fois la définition demandée. On
+// embarque jusqu'à RP_DPI_PRINT pour conserver ce surplus quand il existe, sans
+// laisser le PDF enfler au-delà de ce qu'une imprimante restitue.
+// RP_DPI_MIN est le plancher en dessous duquel le fond de carte cesse d'être
+// présentable : c'est lui, et non un niveau de zoom fixe, qui borne les
+// réductions de zoom quand l'emprise est trop large pour tenir dans le budget de
+// tuiles.
+const RP_DPI_FETCH=240,RP_DPI_PRINT=300,RP_DPI_MIN=120;
+
+// Retouche de l'orthophoto pour le papier. Une prise de vue aérienne brute
+// s'imprime terne : le contraste s'écrase, les toitures et la voirie virent au
+// gris et les limites de parcelle deviennent difficiles à suivre. Trois
+// corrections légères, dans une seule passe sur les pixels :
+//   - accentuation (noyau en croix) pour redonner du mordant aux arêtes après
+//     le rééchantillonnage,
+//   - reprise de contraste avec une très légère ouverture des ombres, sinon les
+//     zones d'ombre portée se bouchent complètement à l'impression,
+//   - saturation à peine relevée, pour distinguer végétation et minéral.
+// Les valeurs restent volontairement basses : il s'agit d'un document technique,
+// l'image doit rester fidèle à la prise de vue.
+function rpEnhanceOrtho(canvas){
+  const w=canvas.width,h=canvas.height;
+  if(w<8||h<8)return canvas;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  let img;
+  try{img=ctx.getImageData(0,0,w,h);}catch(e){return canvas;} // canvas taché : on n'y touche pas
+  const d=img.data;
+  const src=new Uint8ClampedArray(d); // référence figée : le noyau lit l'image d'origine
+  const A=0.20,C=1+4*A;               // accentuation : centre - voisins
+  const SAT=1.08;
+  const lut=new Uint8Array(256);
+  for(let i=0;i<256;i++){
+    let v=(i/255-0.5)*1.07+0.5;
+    v=Math.pow(v<0?0:v>1?1:v,0.97);
+    lut[i]=Math.round(v*255);
+  }
+  const row=w*4;
+  for(let y=0;y<h;y++){
+    const edgeRow=(y===0||y===h-1);
+    for(let x=0;x<w;x++){
+      const i=(y*w+x)*4;
+      let r,g,b;
+      if(edgeRow||x===0||x===w-1){
+        r=src[i];g=src[i+1];b=src[i+2];
+      }else{
+        const up=i-row,dn=i+row,le=i-4,ri=i+4;
+        r=C*src[i]  -A*(src[up]  +src[dn]  +src[le]  +src[ri]);
+        g=C*src[i+1]-A*(src[up+1]+src[dn+1]+src[le+1]+src[ri+1]);
+        b=C*src[i+2]-A*(src[up+2]+src[dn+2]+src[le+2]+src[ri+2]);
+        r=r<0?0:r>255?255:r;g=g<0?0:g>255?255:g;b=b<0?0:b>255?255:b;
+      }
+      r=lut[r|0];g=lut[g|0];b=lut[b|0];
+      const luma=0.299*r+0.587*g+0.114*b;
+      // d est un Uint8ClampedArray : l'écriture arrondit et borne d'elle-même.
+      d[i]=luma+(r-luma)*SAT;
+      d[i+1]=luma+(g-luma)*SAT;
+      d[i+2]=luma+(b-luma)*SAT;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  return canvas;
+}
+
+// Ramène une dalle à la définition réellement utile pour le cadre imprimé (mm).
+// Le rééchantillonnage est fait ici, avec un filtrage de qualité, plutôt que
+// laissé au moteur de rendu du PDF : réduire une image nette donne un résultat
+// bien plus propre que d'embarquer deux fois trop de pixels et de laisser le
+// lecteur les écraser à la volée — et le fichier s'en trouve allégé. On
+// n'agrandit jamais : au-delà de ce que la mosaïque contient, il n'y a plus
+// d'information à gagner, seulement du poids.
+function rpFitRaster(src,mmW,mmH){
+  const scale=Math.min(1,(mmW/25.4*RP_DPI_PRINT)/src.width,(mmH/25.4*RP_DPI_PRINT)/src.height);
+  if(scale>=0.999)return src;
+  const out=document.createElement('canvas');
+  out.width=Math.max(1,Math.round(src.width*scale));
+  out.height=Math.max(1,Math.round(src.height*scale));
+  const c=out.getContext('2d',{willReadFrequently:true});
+  c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';
+  c.drawImage(src,0,0,out.width,out.height);
+  return out;
+}
+function rpPrepareOrtho(src,mmW,mmH){
+  return rpEnhanceOrtho(rpFitRaster(src,mmW,mmH));
+}
+
+// jsPDF convertit les canvas en JPEG qualité 1 : sur le fond de plan cela pèse
+// trois fois plus lourd sans différence visible à l'impression. On maîtrise donc
+// l'encodage ici. En cas de canvas "taché" (tuile sans en-tête CORS), on rend le
+// canvas tel quel : jsPDF échouera de la même façon, mais le repli reste géré.
+function rpJpeg(canvas,q){
+  try{return canvas.toDataURL('image/jpeg',q||0.92);}catch(e){return canvas;}
+}
+
 // Répartit les repères qui se chevaucheraient visuellement (points GPS proches
 // vus à l'échelle du plan imprimé) autour de leur position réelle, sans jamais
 // déplacer le point réel : seul le repère est décalé, relié par une ligne fine
@@ -2638,8 +2777,8 @@ async function rpFetchSituation(w,h,mxMin,myMin,mxMax,myMax){
   const [lo1,la1]=fromWebMercator(box.mxMin,box.myMin);
   const [lo2,la2]=fromWebMercator(box.mxMax,box.myMax);
   const z=Math.max(
-    pickZoomForSpan(spanX,w/25.4*150,10,16),
-    pickZoomForSpan(spanY,h/25.4*150,10,16)
+    pickZoomForSpan(spanX,w/25.4*220,10,17),
+    pickZoomForSpan(spanY,h/25.4*220,10,17)
   );
   const img=await tryFetchIgnBasemap(lo1,la1,lo2,la2,z,90,10,'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png');
   return img?{img,box}:null;
@@ -2649,7 +2788,11 @@ async function rpFetchSituation(w,h,mxMin,myMin,mxMax,myMax){
 // doublé d'un liseré blanc pour rester visible sur n'importe quel fond).
 function rpDrawSituation(doc,x,y,w,h,s,mxMin,myMin,mxMax,myMax){
   const b=s.box;
-  doc.addImage(s.img,'JPEG',x,y,w,h);
+  // Encodage à qualité élevée : l'encart est une carte (traits fins, toponymes
+  // de 1 mm de haut), ce que la compression maltraite le plus. Le PNG serait
+  // tentant, mais jsPDF embarque alors le canvas en RVB brut — 2 Mo pour un
+  // encart de 5 cm, sans gain visible sur un tirage à 300 dpi.
+  doc.addImage(rpJpeg(rpFitRaster(s.img,w,h),0.95),'JPEG',x,y,w,h);
   doc.setDrawColor(...RP.hair);doc.setLineWidth(0.35);doc.rect(x,y,w,h,'S');
   const toX=m=>x+(m-b.mxMin)/(b.mxMax-b.mxMin)*w;
   const toY=m=>y+(b.myMax-m)/(b.myMax-b.myMin)*h;
@@ -2745,16 +2888,27 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const [lonMinAdj,latMinAdj]=fromWebMercator(mxMin,myMin);
   const [lonMaxAdj,latMaxAdj]=fromWebMercator(mxMax,myMax);
 
-  // Zoom calculé pour fournir au moins la résolution d'impression visée
-  // (200 dpi) — jamais dégradé pour économiser des tuiles.
-  const targetDPI=200;
-  const zoom=Math.max(
-    pickZoomForSpan(mxMax-mxMin,mapW/25.4*targetDPI,17,19),
-    pickZoomForSpan(myMax-myMin,mapH/25.4*targetDPI,17,19)
+  // Zoom calculé pour fournir au moins la résolution d'impression visée — jamais
+  // dégradé pour économiser des tuiles. Le plafond est fixé à 21 et non au
+  // niveau 19 de la BD ORTHO : sur un chantier de quelques dizaines de mètres,
+  // s'arrêter à 19 revenait à étirer 300 px sur 20 cm de papier. La mosaïque
+  // générale monte plus haut là où l'IGN dispose de prises de vue plus fines, et
+  // tryFetchIgnBasemap redescend d'elle-même quand le secteur ne sert pas le
+  // niveau demandé.
+  //
+  // Le plancher est lui aussi calculé, et non figé à un niveau donné : un
+  // plancher fixe imposait le zoom 17 même sur une emprise de plusieurs
+  // kilomètres, où le niveau 16 suffit largement — la mosaïque dépassait alors
+  // le budget de tuiles et la page repartait sans aucun fond de carte, alors
+  // qu'un niveau de moins l'aurait rendue nettement au-delà du nécessaire.
+  const zoomFor=dpi=>Math.max(
+    pickZoomForSpan(mxMax-mxMin,mapW/25.4*dpi,6,21),
+    pickZoomForSpan(myMax-myMin,mapH/25.4*dpi,6,21)
   );
 
   setStatus('Recherche d\'une connexion pour le fond de carte IGN…');
-  const basemap=await tryFetchIgnBasemap(lonMinAdj,latMinAdj,lonMaxAdj,latMaxAdj,zoom,140,17);
+  const basemap=await tryFetchIgnBasemap(lonMinAdj,latMinAdj,lonMaxAdj,latMaxAdj,
+    zoomFor(RP_DPI_FETCH),200,zoomFor(RP_DPI_MIN));
   setStatus('Création de la carte de situation…');
   const situation=await rpFetchSituation(panelW-10,44,mxMin,myMin,mxMax,myMax);
 
@@ -2762,7 +2916,10 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   // Pas de voile sur l'orthophoto : les repères ont leur propre halo et tout le
   // mobilier repose sur des plaques opaques, l'image reste donc fidèle.
   doc.setFillColor(...RP.panel);doc.rect(mapX,mapY,mapW,mapH,'F');
-  if(basemap)doc.addImage(basemap,'JPEG',mapX,mapY,mapW,mapH);
+  if(basemap){
+    setStatus('Préparation du fond de carte pour l\'impression…');
+    doc.addImage(rpJpeg(rpPrepareOrtho(basemap,mapW,mapH)),'JPEG',mapX,mapY,mapW,mapH);
+  }
   doc.setDrawColor(...RP.ink);doc.setLineWidth(0.5);doc.rect(mapX,mapY,mapW,mapH,'S');
 
   function project(lon,lat){
