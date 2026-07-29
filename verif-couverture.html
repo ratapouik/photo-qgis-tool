@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Couverture orthophoto IGN — sonde</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0c10;--surface:rgba(255,255,255,.035);--solid:#12161d;
+    --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.13);
+    --accent:#38d478;--accent-ink:#052b16;--accent-bg:rgba(56,212,120,.12);--accent-border:rgba(56,212,120,.28);
+    --accent2:#4cc2ff;--accent2-ink:#04202e;--accent2-bg:rgba(76,194,255,.12);--accent2-border:rgba(76,194,255,.28);
+    --warn:#ffb020;--danger:#ff6058;
+    --text:#eef1f6;--text2:#aeb7c4;--text3:#828d9c;--text4:#646e7c;
+    --r:14px;--r-sm:10px;--r-xs:8px;
+  }
+  body{
+    min-height:100vh;background:var(--bg);color:var(--text);padding:0 0 60px;
+    font-family:'DM Sans',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased
+  }
+  body::before{
+    content:'';position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(60rem 30rem at 12% -8%,rgba(56,212,120,.10),transparent 60%),
+               radial-gradient(50rem 28rem at 92% -4%,rgba(76,194,255,.10),transparent 60%)
+  }
+  .appbar{
+    position:relative;display:flex;align-items:center;gap:10px;height:56px;padding:0 20px;
+    border-bottom:1px solid var(--line);background:rgba(10,12,16,.72);backdrop-filter:blur(14px)
+  }
+  .mark{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:15px;
+    background:linear-gradient(140deg,var(--accent),var(--accent2))}
+  .appbar b{font-size:14px}
+  .shell{position:relative;max-width:860px;margin:0 auto;padding:28px 20px}
+  h1{font-size:clamp(21px,4vw,28px);letter-spacing:-.02em;line-height:1.15;margin-bottom:10px}
+  .lead{color:var(--text3);font-size:14px;line-height:1.6;margin-bottom:22px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:16px}
+  .panel h2{font-size:14px;margin-bottom:10px}
+  .btn{
+    padding:12px 18px;border-radius:var(--r-sm);border:1px solid transparent;cursor:pointer;
+    font-size:14px;font-weight:600;font-family:inherit;min-height:44px;
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:filter .15s
+  }
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-green{background:linear-gradient(140deg,#4ae08a,#22b863);color:var(--accent-ink)}
+  .btn-outline{background:rgba(255,255,255,.06);border-color:var(--line-2);color:var(--text2)}
+  .btn:hover:not(:disabled){filter:brightness(1.08)}
+  .row{display:flex;gap:9px;flex-wrap:wrap}
+  .row .btn{flex:1 1 200px}
+  label.opt{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--text2);margin-top:12px;cursor:pointer}
+  label.opt input{width:17px;height:17px;accent-color:var(--accent2)}
+  .bar{height:8px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin:14px 0 8px}
+  .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#22b863,#4ae08a);transition:width .2s}
+  .status{font-size:13px;color:var(--accent2);min-height:18px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  th,td{padding:9px 8px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--text4);font-size:11px;text-transform:uppercase;letter-spacing:.8px;font-weight:700}
+  .ok{color:var(--accent)}.bad{color:var(--danger)}.warn{color:var(--warn)}
+  .verdict{padding:14px 16px;border-radius:var(--r-sm);font-size:14px;line-height:1.6;margin-bottom:14px}
+  .v-ok{background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent)}
+  .v-warn{background:rgba(255,176,32,.12);border:1px solid rgba(255,176,32,.28);color:var(--warn)}
+  pre{
+    background:var(--solid);border:1px solid var(--line);border-radius:var(--r-xs);padding:12px;
+    font-size:11.5px;line-height:1.5;overflow-x:auto;white-space:pre;color:var(--text2);margin-top:10px
+  }
+  .hint{font-size:12.5px;color:var(--text4);line-height:1.55;margin-top:10px}
+  .hidden{display:none!important}
+  @media(max-width:560px){.shell{padding:20px 12px}.appbar{padding:0 12px}}
+</style>
+</head>
+<body>
+
+<header class="appbar"><span class="mark">📡</span><b>Sonde de couverture IGN</b></header>
+
+<div class="shell">
+  <h1>L'orthophoto IGN est-elle disponible partout&nbsp;?</h1>
+  <p class="lead">
+    Cette page interroge directement le service WMTS de la Géoplateforme, tuile par tuile, sur une grille
+    de points répartis sur le territoire. Elle indique, pour chaque niveau de zoom, où la donnée existe
+    réellement — et, là où elle manque, si le Plan IGN prend le relais. Rien n'est envoyé ailleurs&nbsp;:
+    les requêtes partent de votre navigateur vers l'IGN, et les résultats restent sur cette page.
+  </p>
+
+  <div class="panel">
+    <h2>Lancer la sonde</h2>
+    <div class="row">
+      <button class="btn btn-green" id="bFast">▶ Sondage rapide <span style="opacity:.7">~90 requêtes</span></button>
+      <button class="btn btn-outline" id="bFull">▶ Sondage fin <span style="opacity:.7">~350 requêtes</span></button>
+    </div>
+    <label class="opt"><input type="checkbox" id="optDrom"> Inclure l'outre-mer (Guadeloupe, Martinique, Guyane, Réunion, Mayotte)</label>
+    <p class="hint">
+      Le sondage rapide suffit à répondre à la question. Le sondage fin resserre la grille et met en
+      évidence des trous plus localisés&nbsp;; comptez quelques minutes, y compris sur téléphone.
+    </p>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="panel hidden" id="results">
+    <h2>Résultat</h2>
+    <div id="verdict"></div>
+    <table id="tbl">
+      <thead><tr><th>Zoom</th><th>Résolution</th><th class="ok">Donnée</th><th class="warn">Dalle vide</th><th class="bad">Absente</th><th>Couverture</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="holes"></div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn btn-outline" id="bCopy">📋 Copier le résultat</button>
+    </div>
+    <p class="hint">Collez ce texte dans la conversation&nbsp;: il contient tout ce qu'il faut pour ajuster l'outil.</p>
+    <pre id="raw"></pre>
+  </div>
+</div>
+
+<script>
+// Emprises grossières : la mer et l'étranger ne sont pas filtrés par un contour,
+// mais par la réponse du serveur elle-même (voir « points terrestres » plus bas).
+const ZONES_METRO=[['Métropole',42.3,51.1,-4.8,8.2]];
+const ZONES_DROM=[
+  ['Guadeloupe',15.9,16.5,-61.8,-61.0],['Martinique',14.4,14.9,-61.2,-60.8],
+  ['Guyane',2.2,5.7,-54.6,-51.7],['La Réunion',-21.4,-20.9,55.2,55.8],
+  ['Mayotte',-13.0,-12.6,45.0,45.3]
+];
+const ORTHO=['ORTHOIMAGERY.ORTHOPHOTOS','image/jpeg'];
+const PLAN=['GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png'];
+// Une tuile réelle pèse une dizaine de Ko ; une dalle uniforme « hors emprise »
+// quelques centaines d'octets. Le seuil sépare les deux sans ambiguïté.
+const SEUIL_VIDE=2000;
+const ZOOMS=[15,17,19,20,21];
+
+const $=s=>document.querySelector(s);
+function tileXY(lon,lat,z){
+  const n=2**z, x=Math.floor((lon+180)/360*n), r=lat*Math.PI/180;
+  return [x,Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n)];
+}
+function url(layer,fmt,lon,lat,z){
+  const [col,row]=tileXY(lon,lat,z);
+  return 'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile'
+    +'&LAYER='+layer+'&STYLE=normal&TILEMATRIXSET=PM'
+    +'&TILEMATRIX='+z+'&TILEROW='+row+'&TILECOL='+col+'&FORMAT='+fmt;
+}
+// Deux méthodes : fetch donne le poids de la tuile (donc « vide » vs « donnée »),
+// et si le navigateur refuse la requête inter-domaine, on retombe sur un simple
+// chargement d'image, qui répond au moins « existe / n'existe pas ».
+let peutFetch=true;
+async function sonde(layer,fmt,lon,lat,z){
+  const u=url(layer,fmt,lon,lat,z);
+  if(peutFetch){
+    try{
+      const r=await fetch(u,{cache:'no-store'});
+      if(r.status===404)return 'absente';
+      if(!r.ok)return 'http'+r.status;
+      const b=await r.blob();
+      return b.size<SEUIL_VIDE?'vide':'ok';
+    }catch(e){peutFetch=false;}
+  }
+  return new Promise(res=>{
+    const im=new Image();
+    im.onload=()=>res('ok');
+    im.onerror=()=>res('absente');
+    setTimeout(()=>res('erreur'),20000);
+    im.src=u;
+  });
+}
+async function enParallele(items,n,fn,onStep){
+  const out=new Array(items.length);let i=0,done=0;
+  await Promise.all(Array.from({length:n},async()=>{
+    while(i<items.length){const k=i++;out[k]=await fn(items[k]);onStep(++done);}
+  }));
+  return out;
+}
+const resM=z=>{const m=156543.03*Math.cos(46.5*Math.PI/180)/2**z;return m<1?(m*100).toFixed(0)+' cm/px':m.toFixed(1)+' m/px';};
+
+async function lancer(pas,drom){
+  document.querySelectorAll('.btn').forEach(b=>b.disabled=true);
+  $('#results').classList.add('hidden');
+  const zones=ZONES_METRO.concat(drom?ZONES_DROM:[]);
+  const pts=[];
+  for(const [nom,la1,la2,lo1,lo2] of zones)
+    for(let lat=la1;lat<=la2;lat+=pas)
+      for(let lon=lo1;lon<=lo2;lon+=pas)
+        pts.push({nom,lon:+lon.toFixed(3),lat:+lat.toFixed(3)});
+
+  const taches=[];
+  for(const p of pts)for(const z of ZOOMS)taches.push({...p,z});
+  const total=taches.length;
+  const maj=d=>{$('#bar').style.width=(100*d/total)+'%';
+    $('#status').textContent='Interrogation de l\'IGN… '+d+' / '+total+' tuiles';};
+  maj(0);
+  const etats=await enParallele(taches,5,t=>sonde(...ORTHO,t.lon,t.lat,t.z),maj);
+  taches.forEach((t,i)=>t.etat=etats[i]);
+
+  // Points terrestres : ceux où l'ortho répond au zoom le plus bas. Ailleurs
+  // c'est la mer ou l'étranger, et l'absence de donnée n'est pas un défaut.
+  const zmin=ZOOMS[0];
+  const terre=new Set(taches.filter(t=>t.z===zmin&&t.etat==='ok').map(t=>t.lon+','+t.lat));
+  const surTerre=taches.filter(t=>terre.has(t.lon+','+t.lat));
+  const trous=surTerre.filter(t=>t.etat!=='ok');
+
+  if(trous.length){
+    $('#status').textContent='Vérification du repli Plan IGN sur '+trous.length+' points…';
+    const rp=await enParallele(trous,5,t=>sonde(...PLAN,t.lon,t.lat,Math.min(t.z,19)),()=>{});
+    trous.forEach((t,i)=>t.plan=rp[i]);
+  }
+  afficher(pts.length,terre.size,surTerre,trous);
+  document.querySelectorAll('.btn').forEach(b=>b.disabled=false);
+  $('#status').textContent='Terminé.';
+}
+
+function afficher(nPts,nTerre,surTerre,trous){
+  const tb=$('#tbl tbody');tb.innerHTML='';
+  const lignes=[];
+  for(const z of ZOOMS){
+    const l=surTerre.filter(t=>t.z===z);
+    const c=e=>l.filter(t=>t.etat===e).length;
+    const pct=l.length?100*c('ok')/l.length:0;
+    lignes.push({z,ok:c('ok'),vide:c('vide'),abs:c('absente'),n:l.length,pct});
+    tb.insertAdjacentHTML('beforeend',
+      `<tr><td>${z}</td><td style="color:var(--text4)">${resM(z)}</td>
+       <td class="ok">${c('ok')}</td><td class="warn">${c('vide')}</td>
+       <td class="bad">${c('absente')}</td>
+       <td>${pct.toFixed(1)} %</td></tr>`);
+  }
+  const couvertParPlan=trous.filter(t=>t.plan==='ok').length;
+  const base=lignes.find(l=>l.z===19)||lignes[0];
+  const v=$('#verdict');
+  if(!trous.length){
+    v.className='verdict v-ok';
+    v.textContent='Aucun trou sur les '+nTerre+' points terrestres sondés, à tous les niveaux testés.';
+  }else{
+    v.className='verdict v-warn';
+    v.innerHTML='<b>'+trous.length+' trou(s)</b> d\'orthophoto sur '+nTerre+' points terrestres — '
+      +'dont <b>'+couvertParPlan+'</b> couvert(s) par le repli Plan IGN.'
+      +'<br>Couverture au zoom 19 (le niveau de la BD ORTHO) : <b>'+base.pct.toFixed(1)+' %</b>.';
+  }
+  const h=$('#holes');
+  h.innerHTML=trous.length?('<p class="hint" style="margin-top:14px"><b>Premiers trous :</b></p><pre>'
+    +trous.slice(0,20).map(t=>`${t.nom.padEnd(12)} ${String(t.lon).padStart(8)}, ${String(t.lat).padStart(6)}  zoom ${String(t.z).padEnd(3)} ortho=${(t.etat||'').padEnd(8)} plan=${t.plan||'-'}`).join('\n')
+    +'</pre>'):'';
+
+  const txt=['SONDE COUVERTURE ORTHOPHOTO IGN',
+    'points sondés : '+nPts+' — retenus terrestres : '+nTerre,
+    'méthode : '+(peutFetch?'fetch (poids de tuile mesuré)':'chargement d\'image (poids non mesurable)'),
+    '','zoom  résolution     donnée  vide  absente  couverture']
+    .concat(lignes.map(l=>String(l.z).padEnd(6)+resM(l.z).padEnd(14)+String(l.ok).padEnd(8)
+      +String(l.vide).padEnd(6)+String(l.abs).padEnd(9)+l.pct.toFixed(1)+' %'))
+    .concat(['','trous sur terre : '+trous.length+' — couverts par le Plan IGN : '+couvertParPlan])
+    .concat(trous.slice(0,30).map(t=>'  '+t.nom+' '+t.lon+','+t.lat+' z'+t.z+' ortho='+t.etat+' plan='+(t.plan||'-')))
+    .join('\n');
+  $('#raw').textContent=txt;
+  $('#results').classList.remove('hidden');
+  $('#results').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+$('#bFast').addEventListener('click',()=>lancer(2.0,$('#optDrom').checked));
+$('#bFull').addEventListener('click',()=>lancer(1.0,$('#optDrom').checked));
+$('#bCopy').addEventListener('click',async()=>{
+  const t=$('#raw').textContent;
+  try{await navigator.clipboard.writeText(t);$('#bCopy').textContent='✓ Copié';}
+  catch(e){
+    const r=document.createRange();r.selectNode($('#raw'));
+    getSelection().removeAllRanges();getSelection().addRange(r);
+    $('#bCopy').textContent='Sélectionné — copiez avec Ctrl/Cmd+C';
+  }
+  setTimeout(()=>$('#bCopy').textContent='📋 Copier le résultat',2500);
+});
+</script>
+</body>
+</html>
