@@ -3187,42 +3187,69 @@ function computeLabelLayout(projected,planX,planY,planW,planH){
 // Vue de situation : fond Plan IGN élargi autour du site. La récupération est
 // séparée du dessin pour que le cartouche puisse se réorganiser sans laisser de
 // trou quand la connexion manque.
-async function rpFetchSituation(w,h,mxMin,myMin,mxMax,myMax){
-  const cx=(mxMin+mxMax)/2,cy=(myMin+myMax)/2;
-  let spanX=Math.min(35000,Math.max(2500,(mxMax-mxMin)*14));
-  let spanY=Math.min(35000,Math.max(2500,(myMax-myMin)*14));
+async function rpFetchInset(w,h,cxm,cym,spanX,spanY){
   const ratio=w/h;
   if(spanX/spanY<ratio)spanX=spanY*ratio;else spanY=spanX/ratio;
   const box={
-    mxMin:cx-spanX/2,mxMax:cx+spanX/2,
-    myMin:cy-spanY/2,myMax:cy+spanY/2
+    mxMin:cxm-spanX/2,mxMax:cxm+spanX/2,
+    myMin:cym-spanY/2,myMax:cym+spanY/2
   };
   const [lo1,la1]=fromWebMercator(box.mxMin,box.myMin);
   const [lo2,la2]=fromWebMercator(box.mxMax,box.myMax);
   const z=Math.max(
-    pickZoomForSpan(spanX,w/25.4*220,10,17),
-    pickZoomForSpan(spanY,h/25.4*220,10,17)
+    pickZoomForSpan(spanX,w/25.4*220,6,17),
+    pickZoomForSpan(spanY,h/25.4*220,6,17)
   );
-  const img=await tryFetchIgnBasemap(lo1,la1,lo2,la2,z,90,10,'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png');
+  const img=await tryFetchIgnBasemap(lo1,la1,lo2,la2,z,90,6,'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2','image/png');
   return img?{img,box}:null;
+}
+// Vue rapprochée : les abords immédiats du chantier, quatorze fois l'emprise du
+// plan, bornée pour rester lisible quelle que soit la taille du site.
+function rpFetchSituation(w,h,mxMin,myMin,mxMax,myMax){
+  return rpFetchInset(w,h,(mxMin+mxMax)/2,(myMin+myMax)/2,
+    Math.min(35000,Math.max(2500,(mxMax-mxMin)*14)),
+    Math.min(35000,Math.max(2500,(myMax-myMin)*14)));
+}
+// Vue départementale : emprise fixe d'environ 130 km au sol, de quoi faire
+// tenir un département et ses voisins. Fixe et non proportionnelle à l'emprise
+// du plan : c'est justement son intérêt, donner toujours le même repère
+// géographique, celui qu'on lit sans réfléchir.
+const RP_DEPT_SPAN=190000; // mètres Web Mercator (~130 km au sol sous nos latitudes)
+function rpFetchDept(w,h,mxMin,myMin,mxMax,myMax){
+  return rpFetchInset(w,h,(mxMin+mxMax)/2,(myMin+myMax)/2,RP_DEPT_SPAN,RP_DEPT_SPAN);
 }
 
 // Dessine la vue de situation + l'emprise du plan détaillé (rectangle rouge
 // doublé d'un liseré blanc pour rester visible sur n'importe quel fond).
-function rpDrawSituation(doc,x,y,w,h,s,mxMin,myMin,mxMax,myMax){
-  const b=s.box;
+function rpDrawInset(doc,x,y,w,h,s){
   // Encodage à qualité élevée : l'encart est une carte (traits fins, toponymes
   // de 1 mm de haut), ce que la compression maltraite le plus. Le PNG serait
   // tentant, mais jsPDF embarque alors le canvas en RVB brut — 2 Mo pour un
   // encart de 5 cm, sans gain visible sur un tirage à 300 dpi.
   doc.addImage(rpJpeg(rpFitRaster(s.img,w,h),0.95),'JPEG',x,y,w,h);
   doc.setDrawColor(...RP.hair);doc.setLineWidth(0.35);doc.rect(x,y,w,h,'S');
-  const toX=m=>x+(m-b.mxMin)/(b.mxMax-b.mxMin)*w;
-  const toY=m=>y+(b.myMax-m)/(b.myMax-b.myMin)*h;
-  const rx=toX(mxMin),ry=toY(myMax);
-  const rw=Math.max(1.4,toX(mxMax)-rx),rh=Math.max(1.4,toY(myMin)-ry);
+  const b=s.box;
+  return {
+    toX:m=>x+(m-b.mxMin)/(b.mxMax-b.mxMin)*w,
+    toY:m=>y+(b.myMax-m)/(b.myMax-b.myMin)*h
+  };
+}
+// Emprise du plan détaillé, reportée sur l'encart rapproché : rectangle rouge
+// doublé d'un liseré blanc pour rester visible sur n'importe quel fond.
+function rpDrawExtent(doc,p,mxMin,myMin,mxMax,myMax){
+  const rx=p.toX(mxMin),ry=p.toY(myMax);
+  const rw=Math.max(1.4,p.toX(mxMax)-rx),rh=Math.max(1.4,p.toY(myMin)-ry);
   doc.setDrawColor(...RP.paper);doc.setLineWidth(1.3);doc.rect(rx,ry,rw,rh,'S');
   doc.setDrawColor(...RP.data);doc.setLineWidth(0.7);doc.rect(rx,ry,rw,rh,'S');
+}
+// À l'échelle du département, l'emprise du chantier mesure une fraction de
+// millimètre : un rectangle y serait invisible. C'est donc une pastille qui
+// marque le site, dimensionnée pour se voir sans masquer le toponyme voisin.
+function rpDrawSitePoint(doc,p,mx,my){
+  const x=p.toX(mx),y=p.toY(my);
+  doc.setFillColor(...RP.paper);doc.circle(x,y,2.05,'F');
+  doc.setFillColor(...RP.data);doc.circle(x,y,1.25,'F');
+  doc.setDrawColor(...RP.dataDark);doc.setLineWidth(0.25);doc.circle(x,y,1.25,'S');
 }
 
 // En-tête répété sur chaque page de fiches photo.
@@ -3353,8 +3380,18 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   setStatus('Recherche d\'une connexion pour le fond de carte IGN…');
   const basemap=await rpFetchPlanBasemap(lonMinAdj,latMinAdj,lonMaxAdj,latMaxAdj,
     zoomFor(RP_DPI_FETCH),200,zoomFor(RP_DPI_MIN));
-  setStatus('Création de la carte de situation…');
-  const situation=await rpFetchSituation(panelW-10,44,mxMin,myMin,mxMax,myMax);
+  setStatus('Création des cartes de situation…');
+  // Hauteur des encarts déduite de la place réellement libre plutôt que fixée à
+  // la main : tout le reste du cartouche (titres, légende, bloc de métadonnées)
+  // est de hauteur constante, les encarts se partagent ce qui reste. Des valeurs
+  // en dur se seraient chevauchées avec le bloc du bas à la première évolution
+  // de la mise en page — ce qui venait d'arriver en agrandissant les encarts.
+  const RP_META_H=20;
+  const insetRoom=(panelH-RP_META_H-4)-51.1;
+  const hDept=Math.max(22,Math.min(46,insetRoom*0.46));
+  const hSit=Math.max(24,Math.min(52,insetRoom-hDept));
+  const situation=await rpFetchSituation(panelW-10,hSit,mxMin,myMin,mxMax,myMax);
+  const dept=await rpFetchDept(panelW-10,hDept,mxMin,myMin,mxMax,myMax);
 
   // ---------------- Carte ----------------
   // Pas de voile sur l'orthophoto : les repères ont leur propre halo et tout le
@@ -3408,11 +3445,21 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const cx0=panelX+5,cw0=panelW-10;
   let cy=panelY+8;
 
+  // Du général au particulier : le département situe le chantier pour qui ne
+  // connaît pas la commune, la vue rapprochée montre ses abords, le grand plan
+  // ci-contre montre les prises de vue. Chaque encart répond à une question que
+  // le précédent laisse ouverte.
+  if(dept){
+    cy=rpLabel(doc,'Localisation',cx0,cy,cw0);
+    const p=rpDrawInset(doc,cx0,cy,cw0,hDept,dept);
+    rpDrawSitePoint(doc,p,(mxMin+mxMax)/2,(myMin+myMax)/2);
+    cy+=hDept+7;
+  }
   if(situation){
-    const insetH=44;
     cy=rpLabel(doc,'Situation générale',cx0,cy,cw0);
-    rpDrawSituation(doc,cx0,cy,cw0,insetH,situation,mxMin,myMin,mxMax,myMax);
-    cy+=insetH+7;
+    const p=rpDrawInset(doc,cx0,cy,cw0,hSit,situation);
+    rpDrawExtent(doc,p,mxMin,myMin,mxMax,myMax);
+    cy+=hSit+7;
   }
 
   cy=rpLabel(doc,'Légende',cx0,cy,cw0);
@@ -3428,39 +3475,8 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   doc.setTextColor(...RP.inkSoft);
   doc.text('Position relevée, au bout du trait',cx0+9.4,cy+1.8);
   cy+=7.4;
-  if(situation){
-    doc.setDrawColor(...RP.data);doc.setLineWidth(0.7);
-    doc.rect(cx0+0.9,cy-1.9,5.4,3.6,'S');
-    doc.setTextColor(...RP.inkSoft);
-    doc.text('Emprise du plan ci-contre',cx0+9.4,cy+0.9);
-    cy+=7.4;
-  }
-  cy+=1.5;
 
-  // Index : rend le plan autonome (on sait ce que montre chaque numéro sans
-  // tourner la page). Tronqué proprement si la place manque.
-  const metaH=20;
-  const lineH=4.5;
-  const indexTop=rpLabel(doc,'Index des prises de vue',cx0,cy,cw0);
-  const avail=(panelY+panelH-metaH)-indexTop;
-  let maxRows=Math.max(0,Math.floor(avail/lineH));
-  let shown=points.length;
-  if(points.length>maxRows){shown=Math.max(0,maxRows-1);}
-  doc.setFont(RP_F,'normal');doc.setFontSize(6.6);
-  for(let i=0;i<shown;i++){
-    const y=indexTop+i*lineH;
-    doc.setFont(RP_F,'bold');doc.setTextColor(...RP.data);
-    doc.text(String(i+1),cx0+3.6,y,{align:'right'});
-    doc.setFont(RP_F,'normal');doc.setTextColor(...RP.inkSoft);
-    let t=String(points[i].displayName||'');
-    const parts=doc.splitTextToSize(t,cw0-7);
-    if(parts.length>1)t=parts[0].replace(/\s+\S*$/,'')+'…';else t=parts[0];
-    doc.text(t,cx0+5.6,y);
-  }
-  if(shown<points.length){
-    doc.setFont(RP_F,'italic');doc.setTextColor(...RP.muted);
-    doc.text('+ '+(points.length-shown)+' autres',cx0+5.6,indexTop+shown*lineH);
-  }
+  const metaH=RP_META_H;
 
   // Bloc de métadonnées, calé en bas du cartouche.
   const my0=panelY+panelH-metaH+5;
