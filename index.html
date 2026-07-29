@@ -297,13 +297,16 @@
   <div class="step-panel active" id="step-0">
     <div class="dropzone" id="gisDropzone">
       <div class="icon" id="gisIcon">📂</div>
-      <div class="label">Sélectionnez un dossier de photos</div>
-      <div class="hint">Toutes les images seront listées (JPEG, PNG, HEIC/HEIF…) — vous choisirez lesquelles garder</div>
+      <div class="label">Déposez vos photos, ou cliquez pour choisir un dossier</div>
+      <div class="hint">Dossiers et fichiers isolés peuvent être ajoutés les uns après les autres (JPEG, PNG, HEIC/HEIF…) — vous choisirez ensuite lesquels garder</div>
     </div>
     <input type="file" id="folderInput" webkitdirectory multiple hidden>
+    <input type="file" id="fileInput" accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.tif,.tiff" multiple hidden>
     <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
     <div style="text-align:center;margin:-4px 0 16px">
-      <button class="btn btn-sm btn-outline" id="cameraBtn">📷 Prendre une photo</button>
+      <button class="btn btn-sm btn-outline" id="folderBtn">📂 Ajouter un dossier</button>
+      <button class="btn btn-sm btn-outline" id="filesBtn" style="margin-left:4px">🖼️ Ajouter des fichiers</button>
+      <button class="btn btn-sm btn-outline" id="cameraBtn" style="margin-left:4px">📷 Prendre une photo</button>
     </div>
     <div class="load-status-row">
       <div class="load-status" id="gisLoadStatus" aria-live="polite"></div>
@@ -1930,12 +1933,24 @@ let gisAll=[], gisSelected=[], gisQ=0.6, currentStep=0, leafletMap=null, markers
 let selSearch='', selSort='name-asc', filterNoGps=false;
 let gisCancelled=false, gisLoading=false;
 
-// -- Folder import --
+// -- Import : dossier, fichiers choisis un à un, glisser-déposer --
+// Les trois portes d'entrée alimentent le même import cumulatif : on peut
+// enchaîner un dossier, quelques fichiers isolés d'un autre répertoire, puis un
+// second dossier. « Nouveau projet » reste le seul moyen de repartir de zéro.
 $('#gisDropzone').addEventListener('click',()=>$('#folderInput').click());
+$('#folderBtn').addEventListener('click',()=>$('#folderInput').click());
+$('#filesBtn').addEventListener('click',()=>$('#fileInput').click());
 $('#gisDropzone').addEventListener('dragover',e=>{e.preventDefault();$('#gisDropzone').classList.add('over');});
 $('#gisDropzone').addEventListener('dragleave',()=>$('#gisDropzone').classList.remove('over'));
-$('#gisDropzone').addEventListener('drop',e=>{e.preventDefault();$('#gisDropzone').classList.remove('over');if(e.dataTransfer.files.length)loadFolder([...e.dataTransfer.files]);});
-$('#folderInput').addEventListener('change',e=>{if(e.target.files.length)loadFolder([...e.target.files]);});
+$('#gisDropzone').addEventListener('drop',e=>{e.preventDefault();$('#gisDropzone').classList.remove('over');if(e.dataTransfer.files.length)importPhotos([...e.dataTransfer.files]);});
+// La valeur de l'input est vidée après coup : sans cela, re-sélectionner le même
+// dossier ou le même fichier ne déclenche aucun "change" et l'ajout semble ignoré.
+$('#folderInput').addEventListener('change',e=>{
+  const f=[...e.target.files];e.target.value='';if(f.length)importPhotos(f);
+});
+$('#fileInput').addEventListener('change',e=>{
+  const f=[...e.target.files];e.target.value='';if(f.length)importPhotos(f);
+});
 $('#gisCancelBtn').addEventListener('click',()=>{gisCancelled=true;});
 $('#newProjectBtn').addEventListener('click',resetGisProject);
 let pendingCameraGeo=null;
@@ -1952,7 +1967,7 @@ $('#cameraInput').addEventListener('change',async e=>{
 });
 
 // Ajoute une photo prise à l'instant à la sélection en cours (sans réinitialiser
-// les photos déjà chargées, contrairement à loadFolder qui repart de zéro).
+// les photos déjà chargées).
 async function addCameraPhoto(file){
   $('#gisIcon').textContent='⏳';
   $('#gisLoadStatus').textContent='Traitement de la photo…';
@@ -1997,18 +2012,34 @@ function resetGisProject(){
   selSearch='';$('#selSearch').value='';
   selSort='name-asc';$('#selSort').value='name-asc';
   filterNoGps=false;$('#filterNoGps').checked=false;
-  $('#folderInput').value='';
+  $('#folderInput').value='';$('#fileInput').value='';
   $('#projectBar').classList.add('hidden');
   goToStep(0);
   buildSelectGrid();
 }
 
-async function loadFolder(fl){
-  // Libère les aperçus (object URLs) du précédent import pour éviter les fuites mémoire
-  gisAll.forEach(p=>{if(p.preview)URL.revokeObjectURL(p.preview);});
-  gisAll=[];
-  const imgs=fl.filter(isImageFile);
-  if(!imgs.length)return;
+// Ajoute des photos à la sélection en cours, quelle que soit leur provenance
+// (dossier entier, fichiers choisis un à un, glisser-déposer). L'import est
+// cumulatif : sur le terrain, les photos d'un même chantier sont rarement
+// rangées dans un seul dossier, et repartir de zéro à chaque sélection obligeait
+// à tout regrouper à la main avant de commencer.
+async function importPhotos(fl){
+  if(gisLoading)return;
+  // Doublons écartés sur nom + taille + date de modification : ré-ouvrir le même
+  // dossier pour ajouter deux photos oubliées ne doit pas dupliquer le reste.
+  const seen=new Set(gisAll.map(p=>p.file?p.file.name+'|'+p.file.size+'|'+p.file.lastModified:p.name));
+  const all=fl.filter(isImageFile);
+  const imgs=all.filter(f=>{
+    const k=f.name+'|'+f.size+'|'+f.lastModified;
+    if(seen.has(k))return false;
+    seen.add(k);return true;
+  });
+  if(!imgs.length){
+    $('#gisLoadStatus').textContent=all.length
+      ?(all.length===1?'Cette photo est déjà dans la sélection.':'Ces '+all.length+' photos sont déjà dans la sélection.')
+      :'Aucune image dans cette sélection.';
+    return;
+  }
   gisCancelled=false;gisLoading=true;
   $('#gisIcon').textContent='⏳';
   $('#gisCancelBtn').classList.remove('hidden');
@@ -2030,7 +2061,7 @@ async function loadFolder(fl){
       takenAt:meta.takenAt,blob:null,compSize:0
     };
   });
-  let idx=0;
+  let idx=gisAll.reduce((m,p)=>Math.max(m,p.id),0);
   results.forEach(r=>{if(r)gisAll.push({id:++idx,...r});});
   gisLoading=false;
   $('#gisIcon').textContent='📂';
