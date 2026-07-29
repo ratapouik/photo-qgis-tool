@@ -8,293 +8,483 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@700&display=swap');
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  :root{
-    --bg:#0a0a0b;--card:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);
-    --accent:#34c759;--accent-bg:rgba(52,199,89,0.12);--accent-border:rgba(52,199,89,0.15);
-    --accent2:#5ac8fa;--accent2-bg:rgba(90,200,250,0.12);--accent2-border:rgba(90,200,250,0.15);
-    --warn:#ff9500;--warn-bg:rgba(255,149,0,0.12);--warn-border:rgba(255,149,0,0.2);
-    --danger:#ff3b30;--danger-bg:rgba(255,59,48,0.12);--danger-border:rgba(255,59,48,0.2);
-    --text:#f0f0f0;--text2:#ccc;--text3:#888;--text4:#6e6e6e;
-  }
-  body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;padding:0 24px 60px;-webkit-font-smoothing:antialiased}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 
-  .header{text-align:center;padding:32px 0 24px;animation:fadeUp .5s ease;transition:padding .25s ease}
-  .header .tag{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:4px;text-transform:uppercase;margin-bottom:10px;transition:opacity .2s ease,margin .2s ease,max-height .2s ease;overflow:hidden}
-  .header h1{font-size:clamp(22px,4vw,34px);font-weight:700;line-height:1.1;background:linear-gradient(135deg,#fff 0%,#888 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;transition:font-size .25s ease}
-  .header p{color:var(--text4);font-size:13px;margin-top:8px;max-width:520px;margin-inline:auto;transition:opacity .2s ease,margin .2s ease,max-height .2s ease;overflow:hidden}
-  /* En-tête compacte une fois l'assistant engagé (photos déjà chargées) : on
-     évite de réafficher tout le pitch d'intro à chaque étape, pour laisser la
-     place à l'essentiel — précieux sur petit écran. */
-  .header.compact{padding:14px 0 10px}
-  .header.compact .tag{opacity:0;max-height:0;margin-bottom:0}
-  .header.compact h1{font-size:17px}
+  /* ============================================================
+     JETONS — une seule source pour la couleur, le rythme et les
+     ombres. Les composants ne posent plus de valeurs en dur : c'est
+     ce qui tient l'ensemble d'une étape à l'autre.
+     ============================================================ */
+  :root{
+    --bg:#0a0c10;--bg-2:#0e1116;
+    --surface:rgba(255,255,255,.035);--surface-2:rgba(255,255,255,.06);--surface-3:rgba(255,255,255,.09);
+    --solid:#12161d;--solid-2:#171c26;
+    --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.13);
+
+    --accent:#38d478;--accent-ink:#052b16;
+    --accent-bg:rgba(56,212,120,.12);--accent-border:rgba(56,212,120,.28);
+    --accent2:#4cc2ff;--accent2-ink:#04202e;
+    --accent2-bg:rgba(76,194,255,.12);--accent2-border:rgba(76,194,255,.28);
+    --warn:#ffb020;--warn-bg:rgba(255,176,32,.12);--warn-border:rgba(255,176,32,.28);
+    --danger:#ff6058;--danger-bg:rgba(255,96,88,.12);--danger-border:rgba(255,96,88,.28);
+
+    --text:#eef1f6;--text2:#aeb7c4;--text3:#828d9c;--text4:#646e7c;
+
+    --r-xs:8px;--r-sm:10px;--r:14px;--r-lg:18px;--r-xl:24px;--r-full:999px;
+    --sh-1:0 1px 2px rgba(0,0,0,.4);
+    --sh-2:0 10px 30px -12px rgba(0,0,0,.7);
+    --sh-3:0 28px 70px -24px rgba(0,0,0,.85);
+    --ring:0 0 0 3px rgba(76,194,255,.35);
+    --shell:1120px;
+    --ease:cubic-bezier(.4,0,.2,1);
+  }
+
+  html{scroll-behavior:smooth}
+  body{
+    min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:'DM Sans',system-ui,-apple-system,sans-serif;
+    padding:0 0 72px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  }
+  /* Halo très discret derrière le contenu : donne de la profondeur à un fond
+     sombre qui, à plat, écrase toutes les surfaces au même niveau. */
+  body::before{
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(60rem 30rem at 12% -8%,rgba(56,212,120,.10),transparent 60%),
+      radial-gradient(50rem 28rem at 92% -4%,rgba(76,194,255,.10),transparent 60%);
+  }
+  #tab-gis,.appbar,.gps-modal-overlay,.lib-warning{position:relative;z-index:1}
+  ::selection{background:rgba(76,194,255,.3)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:var(--r-full);border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.18);background-clip:content-box}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  @media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+    html{scroll-behavior:auto}
+  }
+
+  /* ---------------- Barre d'application ---------------- */
+  .appbar{
+    position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;
+    height:56px;padding:0 20px;border-bottom:1px solid var(--line);
+    background:rgba(10,12,16,.72);backdrop-filter:blur(14px) saturate(140%);
+  }
+  .appbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;letter-spacing:-.01em}
+  .appbar .mark{
+    width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:15px;
+    background:linear-gradient(140deg,var(--accent),var(--accent2));box-shadow:var(--sh-1)
+  }
+  .appbar .chip{
+    margin-left:auto;font-size:11px;color:var(--text3);border:1px solid var(--line);
+    padding:5px 10px;border-radius:var(--r-full);background:var(--surface);white-space:nowrap
+  }
+
+  .shell{max-width:var(--shell);margin:0 auto;padding:0 20px}
+
+  /* ---------------- Hero ---------------- */
+  .header{text-align:center;padding:40px 0 26px;animation:fadeUp .5s var(--ease);transition:padding .3s var(--ease)}
+  .header .tag{
+    display:inline-block;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:3px;
+    text-transform:uppercase;padding:5px 12px;border-radius:var(--r-full);
+    border:1px solid var(--accent2-border);background:var(--accent2-bg);color:var(--accent2);
+    margin-bottom:14px;transition:opacity .25s var(--ease),margin .25s var(--ease),max-height .25s var(--ease);overflow:hidden
+  }
+  .header h1{
+    font-size:clamp(26px,5vw,42px);font-weight:700;line-height:1.06;letter-spacing:-.03em;
+    background:linear-gradient(150deg,#fff 10%,#9fb0c4 90%);-webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;transition:font-size .3s var(--ease)
+  }
+  .header p{color:var(--text3);font-size:14px;line-height:1.55;margin:12px auto 0;max-width:540px;transition:opacity .25s var(--ease),margin .25s var(--ease),max-height .25s var(--ease);overflow:hidden}
+  /* En-tête compacte une fois l'assistant engagé : le pitch d'intro n'a plus
+     lieu d'être réaffiché à chaque étape, la place revient au travail en cours. */
+  .header.compact{padding:18px 0 12px}
+  .header.compact .tag{opacity:0;max-height:0;margin-bottom:0;padding-top:0;padding-bottom:0;border-width:0}
+  .header.compact h1{font-size:19px}
   .header.compact p{opacity:0;max-height:0;margin-top:0}
 
-  /* Buttons */
-  .btn{padding:10px 18px;border-radius:10px;border:none;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
-  .btn:disabled{opacity:.4;cursor:not-allowed}
-  .btn-outline{background:rgba(255,255,255,0.06);border:1px solid var(--border);color:#aaa}
-  .btn-green{background:var(--accent);color:#000;font-weight:700}
-  .btn-green:hover:not(:disabled){filter:brightness(1.1)}
-  .btn-blue{background:var(--accent2);color:#000;font-weight:700}
-  .btn-blue:hover:not(:disabled){filter:brightness(1.1)}
-  .btn-sm{padding:6px 12px;font-size:12px;border-radius:8px}
-  .btn:focus-visible,.preset-btn:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
-  .sel-card:focus-visible,.map-photo-item:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+  /* ---------------- Boutons ---------------- */
+  .btn{
+    padding:11px 18px;border-radius:var(--r-sm);border:1px solid transparent;cursor:pointer;
+    font-size:13.5px;font-weight:600;font-family:inherit;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;
+    transition:transform .12s var(--ease),background .18s var(--ease),border-color .18s var(--ease),box-shadow .18s var(--ease),opacity .18s var(--ease)
+  }
+  .btn:disabled{opacity:.42;cursor:not-allowed}
+  .btn:not(:disabled):active{transform:translateY(1px)}
+  .btn-outline{background:var(--surface-2);border-color:var(--line-2);color:var(--text2)}
+  .btn-outline:hover:not(:disabled){background:var(--surface-3);border-color:rgba(255,255,255,.22);color:var(--text)}
+  .btn-green{background:linear-gradient(140deg,#4ae08a,#22b863);color:var(--accent-ink);font-weight:700;box-shadow:0 6px 18px -8px rgba(56,212,120,.9)}
+  .btn-green:hover:not(:disabled){filter:brightness(1.07);box-shadow:0 10px 24px -8px rgba(56,212,120,.95)}
+  .btn-blue{background:linear-gradient(140deg,#6ad0ff,#2ba9f0);color:var(--accent2-ink);font-weight:700;box-shadow:0 6px 18px -8px rgba(76,194,255,.9)}
+  .btn-blue:hover:not(:disabled){filter:brightness(1.07);box-shadow:0 10px 24px -8px rgba(76,194,255,.95)}
+  .btn-sm{padding:8px 13px;font-size:12.5px;border-radius:var(--r-xs)}
+  .btn:focus-visible,.preset-btn:focus-visible,.sel-card:focus-visible,.map-photo-item:focus-visible,
+  .step-item.done:focus-visible{outline:none;box-shadow:var(--ring)}
 
-  /* Barre d'actions projet (reset) */
-  .project-bar{max-width:660px;margin:0 auto 12px;text-align:center}
+  /* ---------------- Panneau ---------------- */
+  .panel{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+    padding:22px;box-shadow:var(--sh-2);animation:fadeUp .4s var(--ease)
+  }
+  .panel + .panel{margin-top:16px}
+  .panel-head{margin-bottom:18px}
+  .panel-head h2{font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .panel-head p{font-size:13px;color:var(--text3);margin-top:5px;line-height:1.5}
 
-  /* Global lib-load warning banner */
-  .lib-warning{max-width:620px;margin:16px auto 0;padding:12px 16px;border-radius:10px;background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);font-size:13px;text-align:center;animation:fadeUp .3s ease}
+  /* ---------------- Fil des étapes ---------------- */
+  .stepper{max-width:720px;margin:0 auto 6px;display:flex;align-items:flex-start;animation:fadeUp .45s var(--ease)}
+  .step-item{display:flex;flex-direction:column;align-items:center;gap:7px;flex:0 0 auto;background:none;border:none;padding:0;font-family:inherit}
+  .step-item.done{cursor:pointer}
+  .step-dot{
+    width:34px;height:34px;border-radius:var(--r-full);display:grid;place-items:center;
+    font-size:13px;font-weight:700;border:1.5px solid var(--line-2);color:var(--text4);
+    background:var(--solid);transition:all .3s var(--ease);flex-shrink:0
+  }
+  .step-item.done:hover .step-dot{transform:scale(1.06)}
+  .step-dot.active{border-color:var(--accent2);color:var(--accent2);background:var(--accent2-bg);box-shadow:0 0 0 4px rgba(76,194,255,.12)}
+  .step-dot.done{border-color:transparent;color:var(--accent-ink);background:linear-gradient(140deg,#4ae08a,#22b863)}
+  .step-line{height:2px;flex:1 1 auto;min-width:12px;background:var(--line-2);margin-top:16px;border-radius:2px;transition:background .35s var(--ease)}
+  .step-line.done{background:linear-gradient(90deg,#22b863,#4ae08a)}
+  .step-label{font-size:11px;font-weight:500;text-align:center;color:var(--text4);transition:color .3s var(--ease);white-space:nowrap}
+  .step-label.active{color:var(--accent2);font-weight:600}
+  .step-label.done{color:var(--text2)}
+  /* Rappel textuel de l'avancement : sur petit écran les libellés du fil
+     disparaissent, il faut bien que l'étape en cours se nomme quelque part. */
+  .step-caption{text-align:center;font-size:12px;color:var(--text4);margin:0 auto 22px}
+  .step-caption b{color:var(--text2);font-weight:600}
 
-  /* Dropzone */
-  .dropzone{max-width:560px;margin:0 auto 8px;border:2px dashed var(--border);border-radius:20px;padding:40px 24px;text-align:center;cursor:pointer;background:rgba(255,255,255,0.02);transition:all .3s;animation:fadeUp .5s ease .1s both}
-  .dropzone.over{border-color:var(--accent);background:rgba(52,199,89,0.06)}
-  .dropzone .icon{font-size:36px;margin-bottom:10px;opacity:.6;transition:font-size .2s ease,margin .2s ease}
-  .dropzone .label{font-size:15px;font-weight:600;color:var(--text2)}
-  .dropzone .hint{font-size:12px;color:var(--text4);margin-top:6px;transition:opacity .2s ease,max-height .2s ease}
-  /* Une fois des photos déjà chargées, la zone de dépôt redevient une simple
-     barre "ajouter d'autres photos" — inutile de garder un gros pavé cliquable
-     qui repousse la grille plus bas à chaque retour sur cette étape. */
-  .dropzone.compact{padding:14px 20px}
-  .dropzone.compact .icon{font-size:20px;margin-bottom:0}
-  .dropzone.compact .hint{opacity:0;max-height:0}
-  .load-status{max-width:560px;margin:0 auto 20px;text-align:center;font-size:12px;color:var(--accent2);min-height:16px}
-
-  /* STEPPER */
-  .stepper{max-width:660px;margin:0 auto 28px;display:flex;align-items:center;justify-content:center;gap:0;animation:fadeUp .4s ease}
-  .step-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid var(--border);color:var(--text4);background:transparent;transition:all .3s;flex-shrink:0}
-  .step-dot.active{border-color:var(--accent2);color:var(--accent2);background:var(--accent2-bg)}
-  .step-dot.done{border-color:var(--accent);color:#fff;background:var(--accent)}
-  .step-line{height:2px;width:40px;background:var(--border);transition:background .3s;flex-shrink:0}
-  .step-line.done{background:var(--accent)}
-  .step-label{font-size:10px;text-align:center;color:var(--text4);margin-top:4px;transition:color .3s}
-  .step-label.active{color:var(--accent2)}
-  .step-label.done{color:var(--accent)}
-  .step-item{display:flex;flex-direction:column;align-items:center}
-
-  .step-panel{display:none;animation:fadeUp .4s ease}
+  .step-panel{display:none;animation:fadeUp .4s var(--ease)}
   .step-panel.active{display:block}
 
-  /* Nav */
-  .step-nav{max-width:660px;margin:24px auto 0;display:flex;justify-content:space-between;align-items:center}
-
-  /* Select toolbar (search + sort) */
-  .select-toolbar{max-width:720px;margin:0 auto 14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center}
-  .select-toolbar input[type="text"],.select-toolbar select{
-    background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;
-    color:var(--text);padding:8px 12px;font-size:13px;font-family:inherit;outline:none;
+  /* ---------------- Navigation d'étape ---------------- */
+  .step-nav{
+    max-width:var(--shell);margin:20px auto 0;display:flex;justify-content:flex-end;
+    align-items:center;gap:12px
   }
-  .select-toolbar input[type="text"]{flex:1;min-width:160px;max-width:260px}
-  .select-toolbar input[type="text"]:focus,.select-toolbar select:focus{border-color:var(--accent2)}
-  .gps-filter{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);cursor:pointer;white-space:nowrap}
-  .gps-filter input{accent-color:var(--accent2);cursor:pointer}
+  .step-nav #prevBtn{margin-right:auto}
+  .step-nav .btn{min-width:130px}
 
-  /* Select grid */
-  .select-grid{max-width:720px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px}
-  .sel-card{position:relative;border-radius:12px;overflow:hidden;border:2px solid transparent;cursor:pointer;transition:all .2s;animation:fadeUp .3s ease both}
-  .sel-card.selected{border-color:var(--accent2)}
-  .sel-card img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#111}
-  .sel-check{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,0.5);background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:14px;color:transparent;transition:all .2s;backdrop-filter:blur(4px)}
-  .sel-card.selected .sel-check{background:var(--accent2);border-color:var(--accent2);color:#000}
-  .sel-name{position:absolute;bottom:0;left:0;right:0;padding:4px 8px;background:linear-gradient(transparent,rgba(0,0,0,.7));font-size:11px;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .sel-gps{position:absolute;top:6px;right:6px;font-size:16px}
-  .select-empty{text-align:center;color:var(--text4);font-size:13px;padding:30px 0}
-
-  /* Bulk rename bar */
-  .bulk-rename-bar{max-width:620px;margin:0 auto 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:12px}
-  .bulk-rename-bar input,.bulk-rename-bar select{
-    background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;
-    color:var(--text);padding:8px 10px;font-size:13px;font-family:inherit;outline:none;
+  /* ---------------- Champs ---------------- */
+  .select-toolbar input[type="text"],.select-toolbar select,
+  .bulk-rename-bar input,.bulk-rename-bar select,.rename-row input{
+    background:var(--solid);border:1px solid var(--line-2);border-radius:var(--r-xs);
+    color:var(--text);padding:10px 12px;font-size:13.5px;font-family:inherit;outline:none;
+    transition:border-color .18s var(--ease),box-shadow .18s var(--ease)
   }
-  .bulk-rename-bar input:focus,.bulk-rename-bar select:focus{border-color:var(--accent2)}
-  .bulk-rename-bar .b-pattern{width:170px}
-  .bulk-rename-bar .b-num{width:64px}
-  .bulk-rename-bar label{font-size:11px;color:var(--text3)}
+  .select-toolbar input[type="text"]:focus,.select-toolbar select:focus,
+  .bulk-rename-bar input:focus,.bulk-rename-bar select:focus,.rename-row input:focus{
+    border-color:var(--accent2);box-shadow:var(--ring)
+  }
+  .select-toolbar select,.bulk-rename-bar select{cursor:pointer}
 
-  /* Rename table */
-  .rename-list{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
-  .rename-row{display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px;animation:fadeUp .3s ease both}
-  .rename-row img{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:#111}
-  .rename-row input{flex:1;background:rgba(255,255,255,0.06);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:inherit}
-  .rename-row input:focus{outline:none;border-color:var(--accent2)}
-  .rename-ext{color:var(--text4);font-size:12px;flex-shrink:0}
-  .dup-warning{max-width:620px;margin:0 auto 12px;padding:10px 14px;border-radius:10px;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn);font-size:12px;text-align:center}
+  /* ---------------- Bandeau d'avertissement ---------------- */
+  .lib-warning{
+    max-width:var(--shell);margin:16px auto 0;padding:12px 16px;border-radius:var(--r-sm);
+    background:var(--danger-bg);border:1px solid var(--danger-border);color:var(--danger);
+    font-size:13px;text-align:center;animation:fadeUp .3s var(--ease)
+  }
 
-  /* Compress (wizard) */
-  .compress-status{max-width:620px;margin:0 auto;text-align:center}
-  .compress-bar{height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;margin:16px 0}
-  .compress-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s;width:0}
-  .compress-results{max-width:620px;margin:16px auto 0;display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto}
-  .comp-row{display:flex;align-items:center;gap:12px;padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:12px}
-  .comp-row img{width:32px;height:32px;border-radius:4px;object-fit:cover;background:#111}
-  .comp-row .name{flex:1;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .comp-row .sizes{color:var(--text3);white-space:nowrap}
-  .comp-row .pct{color:var(--accent);font-weight:700;font-family:'Space Mono',monospace;min-width:50px;text-align:right}
+  /* ---------------- Zone de dépôt + actions d'import ---------------- */
+  .dropzone{
+    border:1.5px dashed var(--line-2);border-radius:var(--r-lg);padding:44px 24px;text-align:center;
+    cursor:pointer;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));
+    transition:border-color .25s var(--ease),background .25s var(--ease),transform .25s var(--ease);
+    animation:fadeUp .5s var(--ease) .08s both
+  }
+  .dropzone:hover{border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.05)}
+  .dropzone.over{border-color:var(--accent);background:var(--accent-bg);transform:scale(1.005)}
+  .dropzone .icon{
+    width:56px;height:56px;margin:0 auto 14px;border-radius:var(--r);display:grid;place-items:center;
+    font-size:26px;background:var(--surface-2);border:1px solid var(--line);
+    transition:width .25s var(--ease),height .25s var(--ease),font-size .25s var(--ease),margin .25s var(--ease)
+  }
+  .dropzone .label{font-size:15.5px;font-weight:600;color:var(--text)}
+  .dropzone .hint{font-size:12.5px;color:var(--text4);margin-top:7px;line-height:1.5;max-width:440px;margin-inline:auto;transition:opacity .25s var(--ease),max-height .25s var(--ease)}
+  /* Une fois des photos chargées, la zone redevient une simple barre
+     « ajouter » : garder un grand pavé repousserait la grille vers le bas à
+     chaque retour sur l'étape. */
+  .dropzone.compact{padding:14px 20px;display:flex;align-items:center;justify-content:center;gap:12px}
+  .dropzone.compact .icon{width:32px;height:32px;font-size:16px;margin:0}
+  .dropzone.compact .label{font-size:13.5px;color:var(--text2)}
+  .dropzone.compact .hint{display:none}
 
-  /* Map */
-  #locateMap{height:500px;border-radius:14px;border:1px solid var(--border);margin-bottom:16px}
-  .map-wrap{max-width:1000px;margin:0 auto}
-  .map-sidebar{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-  .map-sidebar-section{flex:1;min-width:240px}
-  .map-sidebar-section h3{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:8px}
-  .map-photo-list{display:flex;flex-direction:column;gap:6px;max-height:350px;overflow-y:auto}
-  .map-photo-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:background .15s;font-size:13px}
-  .map-photo-item:hover{background:rgba(255,255,255,0.05)}
-  .map-photo-item.active{background:var(--accent2-bg);color:var(--accent2)}
-  .map-photo-item img{width:80px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#111}
+  .import-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+  .load-status{text-align:center;font-size:12.5px;color:var(--accent2);min-height:16px}
+  .load-status-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:12px}
+  .load-status-row .load-status{margin:0}
+
+  /* ---------------- Barre d'outils de sélection ---------------- */
+  .select-bar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;
+    margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)
+  }
+  .select-bar .grp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sel-count{font-size:13px;color:var(--text3);font-variant-numeric:tabular-nums}
+  .sel-count b{color:var(--text);font-weight:600}
+  .select-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  .select-toolbar input[type="text"]{flex:1;min-width:180px}
+  .gps-filter{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text3);cursor:pointer;white-space:nowrap;user-select:none}
+  .gps-filter input{accent-color:var(--accent2);cursor:pointer;width:15px;height:15px}
+
+  /* ---------------- Grille de sélection ---------------- */
+  .select-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .sel-card{
+    position:relative;border-radius:var(--r);overflow:hidden;border:1px solid var(--line);
+    cursor:pointer;background:var(--solid);animation:fadeUp .3s var(--ease) both;
+    transition:transform .18s var(--ease),border-color .18s var(--ease),box-shadow .18s var(--ease)
+  }
+  .sel-card:hover{transform:translateY(-2px);box-shadow:var(--sh-2);border-color:var(--line-2)}
+  .sel-card.selected{border-color:var(--accent2);box-shadow:0 0 0 1px var(--accent2),0 10px 26px -14px rgba(76,194,255,.9)}
+  .sel-card img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0d1015}
+  .sel-check{
+    position:absolute;top:8px;left:8px;width:24px;height:24px;border-radius:var(--r-full);
+    border:1.5px solid rgba(255,255,255,.55);background:rgba(0,0,0,.45);display:grid;place-items:center;
+    font-size:13px;color:transparent;transition:all .18s var(--ease);backdrop-filter:blur(6px)
+  }
+  .sel-card.selected .sel-check{background:var(--accent2);border-color:var(--accent2);color:var(--accent2-ink)}
+  .sel-name{
+    position:absolute;bottom:0;left:0;right:0;padding:16px 9px 7px;
+    background:linear-gradient(transparent,rgba(0,0,0,.82));font-size:11.5px;color:#e6ebf2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+  }
+  .sel-gps{
+    position:absolute;top:8px;right:8px;font-size:11px;line-height:1;padding:5px 7px;
+    border-radius:var(--r-full);background:rgba(0,0,0,.5);backdrop-filter:blur(6px)
+  }
+  .select-empty{text-align:center;color:var(--text4);font-size:13px;padding:36px 0}
+
+  /* ---------------- Renommage ---------------- */
+  .bulk-rename-bar{
+    display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:16px;
+    padding:14px;background:var(--solid);border:1px solid var(--line);border-radius:var(--r)
+  }
+  .bulk-rename-bar .b-pattern{width:180px}
+  .bulk-rename-bar .b-num{width:74px}
+  .bulk-rename-bar label{font-size:11.5px;color:var(--text3);font-weight:500}
+  .rename-list{display:flex;flex-direction:column;gap:8px}
+  .rename-row{
+    display:flex;align-items:center;gap:12px;padding:9px 12px;background:var(--solid);
+    border:1px solid var(--line);border-radius:var(--r-sm);animation:fadeUp .3s var(--ease) both;
+    transition:border-color .18s var(--ease)
+  }
+  .rename-row:hover{border-color:var(--line-2)}
+  .rename-row img{width:46px;height:46px;border-radius:var(--r-xs);object-fit:cover;flex-shrink:0;background:#0d1015}
+  .rename-row input{flex:1;min-width:0}
+  .rename-ext{color:var(--text4);font-size:12px;flex-shrink:0;font-family:'Space Mono',monospace}
+  .dup-warning{
+    margin-bottom:12px;padding:11px 14px;border-radius:var(--r-sm);background:var(--warn-bg);
+    border:1px solid var(--warn-border);color:var(--warn);font-size:12.5px;text-align:center
+  }
+
+  /* ---------------- Compression ---------------- */
+  .presets-inline{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-bottom:20px}
+  .preset-btn{
+    padding:10px 20px;border-radius:var(--r-full);border:1px solid var(--line-2);
+    background:var(--surface);color:var(--text3);cursor:pointer;font-size:13px;font-weight:600;
+    font-family:inherit;transition:all .2s var(--ease);-webkit-appearance:none;appearance:none;outline:none
+  }
+  .preset-btn.active{border-color:var(--accent-border);background:var(--accent-bg);color:var(--accent)}
+  .preset-btn:hover:not(.active){border-color:rgba(255,255,255,.22);color:var(--text2);background:var(--surface-2)}
+  .compress-status{text-align:center;max-width:520px;margin:0 auto}
+  .compress-bar{height:8px;background:rgba(255,255,255,.07);border-radius:var(--r-full);overflow:hidden;margin:16px 0}
+  .compress-bar-fill{height:100%;background:linear-gradient(90deg,#22b863,#4ae08a);border-radius:var(--r-full);transition:width .3s var(--ease);width:0}
+  .compress-results{margin:18px auto 0;display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto;padding-right:4px}
+  .comp-row{
+    display:flex;align-items:center;gap:12px;padding:7px 12px;background:var(--solid);
+    border:1px solid var(--line);border-radius:var(--r-xs);font-size:12.5px
+  }
+  .comp-row img{width:34px;height:34px;border-radius:6px;object-fit:cover;background:#0d1015}
+  .comp-row .name{flex:1;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .comp-row .sizes{color:var(--text4);white-space:nowrap;font-family:'Space Mono',monospace;font-size:11px}
+  .comp-row .pct{color:var(--accent);font-weight:700;font-family:'Space Mono',monospace;min-width:52px;text-align:right}
+
+  /* ---------------- Carte ---------------- */
+  /* Deux colonnes sur grand écran : la carte occupe la place qu'elle mérite et
+     les listes restent visibles à côté, au lieu d'être empilées au-dessus. */
+  .map-wrap{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start}
+  .map-wrap .photo-preview-panel{grid-column:1/-1;grid-row:1}
+  .map-wrap #locateMap{grid-column:1;grid-row:2}
+  .map-wrap .map-sidebar{grid-column:2;grid-row:2}
+  #locateMap{height:min(62vh,560px);border-radius:var(--r);border:1px solid var(--line-2);box-shadow:var(--sh-2)}
+  .map-sidebar{display:flex;flex-direction:column;gap:16px}
+  .map-sidebar-section h3{
+    font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text4);
+    margin-bottom:9px;font-weight:700
+  }
+  .map-photo-list{display:flex;flex-direction:column;gap:5px;max-height:250px;overflow-y:auto;padding-right:4px}
+  .map-photo-item{
+    display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:var(--r-xs);cursor:pointer;
+    transition:background .15s var(--ease);font-size:13px;border:1px solid transparent
+  }
+  .map-photo-list:empty::after{
+    content:'Aucune photo dans cette liste.';font-size:12.5px;color:var(--text4);padding:6px 2px
+  }
+  .map-photo-item:hover{background:var(--surface-2)}
+  .map-photo-item.active{background:var(--accent2-bg);border-color:var(--accent2-border);color:var(--accent2)}
+  .map-photo-item img{width:64px;height:48px;border-radius:7px;object-fit:cover;flex-shrink:0;background:#0d1015}
   .map-photo-item .mname{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .map-photo-item .mcoord{font-family:'Space Mono',monospace;font-size:10px;color:var(--text4)}
-  /* Photo preview panel */
-  .photo-preview-panel{margin-bottom:16px;border-radius:14px;border:1px solid var(--accent2-border);background:rgba(0,0,0,0.4);overflow:hidden;animation:fadeUp .3s ease;display:flex;align-items:center;gap:20px;padding:16px}
-  .photo-preview-panel img{max-height:280px;max-width:50%;border-radius:10px;object-fit:contain;flex-shrink:0}
-  .photo-preview-panel .preview-info{flex:1}
-  .photo-preview-panel .preview-name{font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px}
+  .photo-preview-panel{
+    border-radius:var(--r);border:1px solid var(--accent2-border);background:rgba(76,194,255,.06);
+    overflow:hidden;animation:fadeUp .3s var(--ease);display:flex;align-items:center;gap:18px;padding:14px
+  }
+  .photo-preview-panel img{max-height:180px;max-width:42%;border-radius:var(--r-xs);object-fit:contain;flex-shrink:0}
+  .photo-preview-panel .preview-info{flex:1;min-width:0}
+  .photo-preview-panel .preview-name{font-size:16px;font-weight:700;margin-bottom:6px}
   .photo-preview-panel .preview-hint{font-size:13px;color:var(--accent2);line-height:1.5}
-  .map-instructions{text-align:center;padding:12px;background:var(--accent2-bg);border:1px solid var(--accent2-border);border-radius:10px;font-size:13px;color:var(--accent2);margin-bottom:16px}
+  .map-instructions{
+    padding:12px 16px;background:var(--accent2-bg);border:1px solid var(--accent2-border);
+    border-radius:var(--r-sm);font-size:13px;color:var(--accent2);margin-bottom:16px;text-align:center
+  }
   .map-instructions.all-done{background:var(--accent-bg);border-color:var(--accent-border);color:var(--accent)}
 
-  /* Presets */
-  .presets-inline{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px}
-  .preset-btn{
-    padding:8px 18px;border-radius:24px;border:1px solid var(--border);
-    background:rgba(255,255,255,0.04);color:var(--text3);cursor:pointer;
-    font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;
-    transition:all .2s;-webkit-appearance:none;appearance:none;outline:none;
-  }
-  .preset-btn.active{border-color:var(--accent);background:var(--accent-bg);color:var(--accent)}
-  .preset-btn:hover:not(.active){border-color:rgba(255,255,255,0.25);color:var(--text2);background:rgba(255,255,255,0.08)}
-  .slider-wrap-inline{max-width:300px;margin:0 auto 16px;text-align:center}
-  .slider-wrap-inline input[type=range]{accent-color:var(--accent)}
-
-  .summary-box{max-width:620px;margin:0 auto 16px;padding:16px 20px;border-radius:14px;font-size:13px;animation:fadeUp .3s ease}
+  /* ---------------- Export ---------------- */
+  .summary-box{padding:15px 18px;border-radius:var(--r-sm);font-size:13px;line-height:1.6;animation:fadeUp .3s var(--ease)}
   .summary-box strong{font-family:'Space Mono',monospace}
-  .export-bar-wrap{max-width:620px;margin:16px auto 0}
-  .export-options{max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:12px;padding:18px 20px;background:var(--card);border:1px solid var(--border);border-radius:14px}
-  .export-check{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text2);cursor:pointer}
+  .summary-info{background:var(--accent2-bg);border:1px solid var(--accent2-border);color:var(--accent2)}
+  .summary-ok{background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent);margin-bottom:16px}
+  .export-options{display:grid;gap:10px;margin-bottom:20px}
+  .export-check{
+    display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text2);cursor:pointer;
+    padding:14px 16px;background:var(--solid);border:1px solid var(--line);border-radius:var(--r-sm);
+    transition:border-color .18s var(--ease),background .18s var(--ease)
+  }
+  .export-check:hover{border-color:var(--line-2);background:var(--solid-2)}
+  .export-check:has(input:checked){border-color:var(--accent2-border);background:rgba(76,194,255,.06)}
   .export-check input{width:18px;height:18px;accent-color:var(--accent2);cursor:pointer;flex-shrink:0}
   .export-check span{color:var(--text4);font-size:12px}
-  .load-status-row{display:flex;align-items:center;justify-content:center;gap:10px;max-width:560px;margin:0 auto 20px}
-  .load-status-row .load-status{margin:0}
+  .export-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .export-actions .btn{font-size:14.5px;padding:14px 26px}
+  .export-bar-wrap{margin-top:16px}
+  .export-status{text-align:center;margin-top:12px;font-size:12.5px;color:var(--text4)}
+  .project-bar{display:flex;justify-content:flex-end;margin-bottom:12px}
 
   .hidden{display:none!important}
 
-  /* Précheck GPS avant ouverture de l'appareil photo */
-  .gps-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
-  .gps-modal{background:#141416;border:1px solid var(--border);border-radius:16px;padding:28px 24px;max-width:340px;width:100%;text-align:center;animation:fadeUp .3s ease}
-  .gps-modal h3{font-size:16px;font-weight:700;margin-bottom:4px;color:var(--text)}
+  /* ---------------- Modale GPS ---------------- */
+  .gps-modal-overlay{position:fixed;inset:0;background:rgba(6,8,11,.78);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+  .gps-modal{background:var(--solid-2);border:1px solid var(--line-2);border-radius:var(--r-lg);padding:28px 24px;max-width:350px;width:100%;text-align:center;box-shadow:var(--sh-3);animation:fadeUp .3s var(--ease)}
+  .gps-modal h3{font-size:16px;font-weight:700;margin-bottom:4px}
   .gps-modal .gps-status{font-size:13px;color:var(--text3);margin-bottom:16px;display:flex;align-items:center;justify-content:center;gap:8px}
   .gps-pulse{width:10px;height:10px;border-radius:50%;background:var(--accent2);flex-shrink:0;animation:gpsPulse 1.4s ease infinite}
   @keyframes gpsPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
-  .gps-modal .gps-accuracy{font-size:38px;font-weight:700;font-family:'Space Mono',monospace;color:var(--text);margin-bottom:4px}
+  .gps-modal .gps-accuracy{font-size:40px;font-weight:700;font-family:'Space Mono',monospace;margin-bottom:4px;letter-spacing:-.02em}
   .gps-modal .gps-quality{font-size:13px;font-weight:600;margin-bottom:18px;min-height:18px}
   .gps-modal .gps-quality.good{color:var(--accent)}
   .gps-modal .gps-quality.medium{color:var(--warn)}
   .gps-modal .gps-quality.bad{color:var(--danger)}
   .gps-modal-actions{display:flex;gap:10px}
-  .gps-modal-actions .btn{flex:1;justify-content:center}
+  .gps-modal-actions .btn{flex:1}
 
-  /* Leaflet popup override */
-  .leaflet-popup-content-wrapper{background:#1a1a1b;color:#eee;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.5)}
-  .leaflet-popup-tip{background:#1a1a1b}
+  /* ---------------- Leaflet ---------------- */
+  .leaflet-popup-content-wrapper{background:var(--solid-2);color:var(--text);border-radius:var(--r-sm);box-shadow:var(--sh-3)}
+  .leaflet-popup-tip{background:var(--solid-2)}
   .leaflet-popup-content{font-family:'DM Sans',sans-serif;font-size:12px}
-  .leaflet-popup-content img{border-radius:8px;max-width:200px}
+  .leaflet-popup-content img{border-radius:var(--r-xs);max-width:200px}
+  .leaflet-container{background:#0d1015}
+  .leaflet-bar a{background:var(--solid-2);color:var(--text2);border-color:var(--line)}
+  .leaflet-bar a:hover{background:var(--solid);color:var(--text)}
 
   /* ============================================================
      RESPONSIVE — tablette et mobile (usage terrain)
      ============================================================ */
   @media(max-width:900px){
-    body{padding:0 14px 16px}
-    .header{padding:20px 0 16px}
-    .header p{font-size:13px;padding:0 8px}
+    .shell{padding:0 14px}
+    .appbar{padding:0 14px}
+    .header{padding:24px 0 16px}
+    .panel{padding:16px;border-radius:var(--r)}
 
     /* Cibles tactiles plus grandes pour une utilisation sur le terrain */
-    .btn{padding:12px 18px;font-size:14px}
-    .btn-sm{padding:9px 14px;font-size:13px}
-    .sel-check{width:30px;height:30px;font-size:16px}
-    .preset-btn{padding:10px 16px}
+    .btn{padding:13px 18px;font-size:14px;min-height:44px}
+    .btn-sm{padding:10px 14px;font-size:13px;min-height:44px}
+    .step-item{padding:6px 2px}
+    .sel-check{width:30px;height:30px;font-size:15px}
+    .preset-btn{padding:11px 18px}
 
-    /* Empêche le zoom automatique iOS sur les champs (nécessite font-size >= 16px) */
+    /* Empêche le zoom automatique iOS sur les champs (exige font-size >= 16px) */
     .select-toolbar input[type="text"],.select-toolbar select,
     .bulk-rename-bar input,.bulk-rename-bar select,
     .rename-row input{font-size:16px}
 
-    /* Barre de recherche/tri et renommage en masse : empilées, pleine largeur */
     .select-toolbar{flex-direction:column;align-items:stretch}
-    .select-toolbar input[type="text"]{max-width:none}
-    .gps-filter{justify-content:center}
+    .gps-filter{justify-content:center;padding:4px 0}
     .bulk-rename-bar{flex-direction:column;align-items:stretch;text-align:center}
     .bulk-rename-bar .b-pattern,.bulk-rename-bar .b-num,.bulk-rename-bar select{width:100%}
     .bulk-rename-bar label{margin-top:4px}
-    .bulk-rename-bar button{width:100%;justify-content:center}
+    .bulk-rename-bar button{width:100%}
+    .import-actions .btn{flex:1 1 140px}
 
-    /* Carte : moins haute pour garder les listes/actions accessibles sans trop scroller */
-    #locateMap{height:340px}
-    .map-photo-item img{width:64px;height:48px}
-
-    /* La carte est l'élément principal de cette étape : on l'affiche en premier
-       (avant les listes de photos) pour qu'elle soit visible sans avoir à
-       scroller — l'ordre du code source ne change pas, seul l'affichage. */
-    .map-wrap{display:flex;flex-direction:column}
-    .map-wrap #locateMap{order:1}
+    /* La carte est l'élément principal de cette étape : elle passe en premier,
+       avant les listes, pour être visible sans avoir à faire défiler. */
+    .map-wrap{display:flex;flex-direction:column;align-items:stretch}
+    .map-wrap #locateMap{order:1;height:340px}
     .map-wrap .photo-preview-panel{order:2}
-    .map-wrap .map-sidebar{order:3}
-
-    /* Panneau photo à placer : empilé au lieu de côte à côte */
+    .map-wrap .map-sidebar{order:3;flex-direction:row;flex-wrap:wrap}
+    .map-sidebar-section{flex:1 1 240px}
     .photo-preview-panel{flex-direction:column;align-items:stretch;text-align:center}
-    .photo-preview-panel img{max-width:100%;max-height:200px;margin:0 auto}
+    .photo-preview-panel img{max-width:100%;max-height:190px;margin:0 auto}
 
-    /* Barre de navigation d'étape : boutons pleine largeur, plus faciles à
-       atteindre au pouce. Pas de position "sticky" : sur une étape courte (peu
-       de photos), un bandeau collant recouvrirait le contenu au-dessus — on
-       préfère un bandeau qui reste dans le flux normal de la page. */
+    /* Barre de navigation : boutons pleine largeur, atteignables au pouce. Pas
+       de position collante : sur une étape courte, un bandeau collant
+       recouvrirait le contenu au-dessus. */
     .step-nav{
       margin:16px -14px 0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));
-      background:var(--bg);border-top:1px solid var(--border);
+      background:var(--bg-2);border-top:1px solid var(--line)
     }
-    .step-nav .btn{flex:1;justify-content:center}
+    .step-nav .btn{flex:1;min-width:0}
   }
 
   @media(max-width:560px){
-    body{padding:0 10px 16px}
+    .shell{padding:0 10px}
+    .appbar{padding:0 10px}
+    .appbar .chip{display:none}
     .step-nav{margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px}
-    .select-grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
-    .stepper{gap:0}.step-line{width:14px}
-    .step-dot{width:28px;height:28px;font-size:11px}
-    .step-label{font-size:9px}
-    .dropzone{padding:28px 16px}
-    .map-sidebar{gap:12px}
+    .select-grid{grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px}
+    .step-dot{width:28px;height:28px;font-size:11.5px}
+    .step-label{display:none}
+    .step-line{margin-top:13px}
+    .step-caption{margin-bottom:18px}
+    .dropzone{padding:30px 16px}
+    .dropzone .icon{width:46px;height:46px;font-size:22px}
+    .export-actions .btn{flex:1 1 100%}
   }
 </style>
 </head>
 <body>
 
+<header class="appbar">
+  <div class="brand"><span class="mark" aria-hidden="true">📍</span>Photos → QGIS</div>
+  <span class="chip">Vos photos sont traitées dans le navigateur, elles ne quittent pas l'appareil</span>
+</header>
+
 <div id="libWarning" class="lib-warning hidden">⚠ Certaines librairies n'ont pas pu être chargées (vérifiez votre connexion internet), l'outil risque de ne pas fonctionner correctement.</div>
 
-<div id="tab-gis">
+<div id="tab-gis" class="shell">
   <div class="header">
-    <div class="tag" style="color:var(--accent2)">Export QGIS</div>
-    <h1>Shapefile + Photos</h1>
-    <p>Sélectionnez, renommez, compressez et localisez vos photos pour QGIS (GeoJSON, CSV et Shapefile réel inclus).</p>
+    <div class="tag">Export QGIS</div>
+    <h1>Shapefile&nbsp;+&nbsp;Photos</h1>
+    <p>Sélectionnez, renommez, compressez et localisez vos photos de chantier, puis exportez un projet QGIS complet — GeoJSON, CSV, Shapefile réel et compte-rendu PDF.</p>
   </div>
 
-  <!-- Stepper -->
-  <div class="stepper" id="stepper">
-    <div class="step-item"><div class="step-dot active" data-s="0">1</div><div class="step-label active">Sélection</div></div>
-    <div class="step-line"></div>
-    <div class="step-item"><div class="step-dot" data-s="1">2</div><div class="step-label">Renommer</div></div>
-    <div class="step-line"></div>
-    <div class="step-item"><div class="step-dot" data-s="2">3</div><div class="step-label">Compresser</div></div>
-    <div class="step-line"></div>
-    <div class="step-item"><div class="step-dot" data-s="3">4</div><div class="step-label">Localiser</div></div>
-    <div class="step-line"></div>
-    <div class="step-item"><div class="step-dot" data-s="4">5</div><div class="step-label">Exporter</div></div>
-  </div>
+  <!-- Fil des étapes : cliquable vers les étapes déjà franchies -->
+  <nav class="stepper" id="stepper" aria-label="Progression">
+    <button type="button" class="step-item" data-step="0"><span class="step-dot active" data-s="0">1</span><span class="step-label active">Sélection</span></button>
+    <span class="step-line"></span>
+    <button type="button" class="step-item" data-step="1"><span class="step-dot" data-s="1">2</span><span class="step-label">Renommer</span></button>
+    <span class="step-line"></span>
+    <button type="button" class="step-item" data-step="2"><span class="step-dot" data-s="2">3</span><span class="step-label">Compresser</span></button>
+    <span class="step-line"></span>
+    <button type="button" class="step-item" data-step="3"><span class="step-dot" data-s="3">4</span><span class="step-label">Localiser</span></button>
+    <span class="step-line"></span>
+    <button type="button" class="step-item" data-step="4"><span class="step-dot" data-s="4">5</span><span class="step-label">Exporter</span></button>
+  </nav>
+  <div class="step-caption" id="stepCaption" aria-live="polite"></div>
 
   <!-- STEP 0: SELECT -->
   <div class="step-panel active" id="step-0">
+    <div class="panel">
     <div class="dropzone" id="gisDropzone">
       <div class="icon" id="gisIcon">📂</div>
       <div class="label">Déposez vos photos, ou cliquez pour choisir un dossier</div>
@@ -303,22 +493,27 @@
     <input type="file" id="folderInput" webkitdirectory multiple hidden>
     <input type="file" id="fileInput" accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp,.tif,.tiff" multiple hidden>
     <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
-    <div style="text-align:center;margin:-4px 0 16px">
+    <div class="import-actions">
       <button class="btn btn-sm btn-outline" id="folderBtn">📂 Ajouter un dossier</button>
-      <button class="btn btn-sm btn-outline" id="filesBtn" style="margin-left:4px">🖼️ Ajouter des fichiers</button>
-      <button class="btn btn-sm btn-outline" id="cameraBtn" style="margin-left:4px">📷 Prendre une photo</button>
+      <button class="btn btn-sm btn-outline" id="filesBtn">🖼️ Ajouter des fichiers</button>
+      <button class="btn btn-sm btn-outline" id="cameraBtn">📷 Prendre une photo</button>
     </div>
     <div class="load-status-row">
       <div class="load-status" id="gisLoadStatus" aria-live="polite"></div>
       <button class="btn btn-sm btn-outline hidden" id="gisCancelBtn">Annuler</button>
     </div>
+    </div>
+
+    <div class="panel" id="selectPanel">
     <div class="project-bar hidden" id="projectBar">
       <button class="btn btn-sm btn-outline" id="newProjectBtn">🔄 Nouveau projet</button>
     </div>
-    <div class="hidden" id="selectControls" style="text-align:center;margin-bottom:12px">
-      <button class="btn btn-sm btn-outline" id="selAll">Tout sélectionner</button>
-      <button class="btn btn-sm btn-outline" id="selNone" style="margin-left:4px">Tout désélectionner</button>
-      <span style="margin-left:12px;font-size:13px;color:var(--text3)" id="selCount" aria-live="polite"></span>
+    <div class="hidden select-bar" id="selectControls">
+      <div class="grp">
+        <button class="btn btn-sm btn-outline" id="selAll">Tout sélectionner</button>
+        <button class="btn btn-sm btn-outline" id="selNone">Tout désélectionner</button>
+      </div>
+      <span class="sel-count" id="selCount" aria-live="polite"></span>
     </div>
     <div class="hidden select-toolbar" id="selectToolbar">
       <input type="text" id="selSearch" placeholder="🔍 Rechercher par nom…">
@@ -333,12 +528,15 @@
       <label class="gps-filter"><input type="checkbox" id="filterNoGps"> ⚠ Sans GPS uniquement</label>
     </div>
     <div class="select-grid" id="selectGrid"></div>
+    </div>
   </div>
 
   <!-- STEP 1: RENAME -->
   <div class="step-panel" id="step-1">
-    <div class="summary-box" style="background:var(--accent2-bg);border:1px solid var(--accent2-border);color:var(--accent2)">
-      Renommez vos photos ci-dessous. Le nom sera utilisé dans la table attributaire du Shapefile / GeoJSON.
+    <div class="panel">
+    <div class="panel-head">
+      <h2>Nommez vos prises de vue</h2>
+      <p>Ces noms alimentent la table attributaire du Shapefile et du GeoJSON, et les intitulés du compte-rendu PDF. Renommez-les en bloc, puis ajustez au cas par cas.</p>
     </div>
     <div class="bulk-rename-bar">
       <label>Motif :</label>
@@ -357,10 +555,16 @@
     </div>
     <div class="dup-warning hidden" id="dupWarning"></div>
     <div class="rename-list" id="renameList"></div>
+    </div>
   </div>
 
   <!-- STEP 2: COMPRESS -->
   <div class="step-panel" id="step-2">
+    <div class="panel">
+    <div class="panel-head">
+      <h2>Allégez les fichiers</h2>
+      <p>Les photos sont recompressées en JPEG. Une compression moyenne divise le poids par cinq à dix sans perte visible sur un tirage ou un écran.</p>
+    </div>
     <div class="presets-inline" id="gPresets">
       <button class="preset-btn" data-q="0.85">✦ Légère</button>
       <button class="preset-btn active" data-q="0.6">✦✦ Moyenne</button>
@@ -372,10 +576,16 @@
       <button class="btn btn-green" id="compStart">Lancer la compression</button>
     </div>
     <div class="compress-results hidden" id="compResults"></div>
+    </div>
   </div>
 
   <!-- STEP 3: LOCATE -->
   <div class="step-panel" id="step-3">
+    <div class="panel">
+    <div class="panel-head">
+      <h2>Vérifiez et complétez les positions</h2>
+      <p>Les photos géolocalisées sont déjà placées. Celles sans coordonnées EXIF vous attendent dans la colonne de droite.</p>
+    </div>
     <div class="map-instructions" id="mapInstr">
       Cliquez sur une photo sans GPS dans la liste, puis cliquez sur la carte pour la placer. Glissez les marqueurs pour ajuster.
     </div>
@@ -399,17 +609,23 @@
       </div>
       <div id="locateMap"></div>
     </div>
+    </div>
   </div>
 
   <!-- STEP 4: EXPORT -->
   <div class="step-panel" id="step-4">
-    <div class="bulk-rename-bar" style="margin-bottom:16px">
+    <div class="panel">
+    <div class="panel-head">
+      <h2>Générez le livrable</h2>
+      <p>Le nom du projet reprend « Client - Ville » : il titre le projet QGIS, le compte-rendu et le nom du fichier ZIP.</p>
+    </div>
+    <div class="bulk-rename-bar">
       <label>Client :</label>
       <input type="text" class="b-pattern" id="projClient" placeholder="Nom du client">
       <label>Ville :</label>
       <input type="text" class="b-pattern" id="projVille" placeholder="Ville">
     </div>
-    <div class="summary-box" style="background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent)" id="exportSummary"></div>
+    <div class="summary-box summary-ok" id="exportSummary"></div>
 
     <div class="export-options" id="exportOptions">
       <label class="export-check"><input type="checkbox" id="optProject" checked> 🌍 Projet QGIS <span>(GeoJSON, CSV, Shapefile, mise en page)</span></label>
@@ -417,14 +633,15 @@
       <label class="export-check"><input type="checkbox" id="optPdf"> 📄 Compte-rendu PDF</label>
     </div>
 
-    <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-      <button class="btn btn-blue" id="btnExportDownload" style="font-size:15px;padding:14px 28px">↓ Télécharger</button>
-      <button class="btn btn-outline" id="btnExportEmail" style="font-size:15px;padding:14px 28px">📧 Envoyer par e-mail</button>
+    <div class="export-actions">
+      <button class="btn btn-blue" id="btnExportDownload">↓ Télécharger le ZIP</button>
+      <button class="btn btn-outline" id="btnExportEmail">📧 Envoyer par e-mail</button>
     </div>
     <div class="export-bar-wrap hidden" id="exportBarWrap">
       <div class="compress-bar"><div class="compress-bar-fill" id="exportBar"></div></div>
     </div>
-    <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--text4)" id="exportStatus" aria-live="polite"></div>
+    <div class="export-status" id="exportStatus" aria-live="polite"></div>
+    </div>
   </div>
 
   <!-- Step navigation -->
@@ -3225,25 +3442,49 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
 // STEPPER NAVIGATION
 // ============================
 const totalSteps=5;
+const STEP_TITLES=['Sélection','Renommer','Compresser','Localiser','Exporter'];
+const STEP_HINTS=[
+  'choisissez les photos à traiter',
+  'nommez chaque prise de vue',
+  'allégez les fichiers',
+  'placez les photos sur la carte',
+  'générez le livrable'
+];
 function goToStep(s){
   if(s<0||s>=totalSteps)return;
   currentStep=s;
   $$('.step-panel').forEach(p=>p.classList.remove('active'));
   $('#step-'+s).classList.add('active');
   $$('.step-dot').forEach((d,i)=>{d.classList.remove('active','done');if(i<s)d.classList.add('done');if(i===s)d.classList.add('active');});
+  $$('.step-item').forEach((it,i)=>{it.classList.toggle('done',i<s);it.disabled=i>=s;});
   $$('.step-label').forEach((l,i)=>{l.classList.remove('active','done');if(i<s)l.classList.add('done');if(i===s)l.classList.add('active');});
   $$('.step-line').forEach((l,i)=>{l.classList.toggle('done',i<s);});
   if(s===1)renderRename();
   if(s===2){$('#compStart').disabled=false;$('#compStart').textContent='Lancer la compression';$('#compBar').style.width='0';$('#compLabel').textContent='Prêt à compresser';$('#compResults').classList.add('hidden');}
   if(s===3){setTimeout(()=>{renderMap();},150);}
   if(s===4){renderExport();updateExportButtons();$('#exportBarWrap').classList.add('hidden');$('#exportStatus').textContent='';}
+  // Rappel textuel de l'étape : sur petit écran les libellés du fil sont masqués
+  // faute de place, et un fil de cinq pastilles sans texte ne dit plus rien.
+  const cap=$('#stepCaption');
+  if(cap)cap.innerHTML='Étape '+(s+1)+' sur '+totalSteps+' · <b>'+STEP_TITLES[s]+'</b> — '+STEP_HINTS[s];
   updateNav();
 }
+
+// Retour en arrière par le fil : revenir sur une étape franchie est toujours
+// sans risque, alors qu'y sauter en avant contournerait la compression ou la
+// sélection. Seules les pastilles déjà validées sont donc actives.
+$$('.step-item').forEach(it=>{
+  it.addEventListener('click',()=>{
+    const target=+it.dataset.step;
+    if(target<currentStep)goToStep(target);
+  });
+});
 
 function updateNav(){
   const prev=$('#prevBtn'),next=$('#nextBtn'),nav=$('#stepNav');
   nav.style.display=gisAll.length?'flex':'none';
   $('#projectBar').classList.toggle('hidden',!gisAll.length);
+  $('#selectPanel').classList.toggle('hidden',!gisAll.length);
   $('.header').classList.toggle('compact',gisAll.length>0);
   $('#gisDropzone').classList.toggle('compact',gisAll.length>0);
   // display:none (pas juste invisible) pour que l'autre bouton profite de
