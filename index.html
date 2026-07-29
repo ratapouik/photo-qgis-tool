@@ -2869,7 +2869,9 @@ function rpScaleBar(doc,x,y,spanMeters,mapWmm){
 // présentable : c'est lui, et non un niveau de zoom fixe, qui borne les
 // réductions de zoom quand l'emprise est trop large pour tenir dans le budget de
 // tuiles.
-const RP_DPI_FETCH=240,RP_DPI_PRINT=300,RP_DPI_MIN=120;
+// RP_DPI_FLOOR : définition en deçà de laquelle on cesse de resserrer le cadrage
+// (voir l'emprise minimale dans buildPhotoReportPDF).
+const RP_DPI_FETCH=240,RP_DPI_PRINT=300,RP_DPI_MIN=120,RP_DPI_FLOOR=110;
 
 // Rayon du repère chiffré du plan, et rayon de son halo blanc. Le repère est
 // volontairement petit : il ne porte qu'un numéro d'index, la position exacte
@@ -3268,6 +3270,22 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   }else{
     const newSpanY=(mxMax-mxMin)/boxRatio,cy=(myMin+myMax)/2;
     myMin=cy-newSpanY/2;myMax=cy+newSpanY/2;
+  }
+  // Emprise minimale, imposée par la finesse réelle de la donnée. Trois photos
+  // prises à quelques mètres l'une de l'autre donnaient une emprise de quelques
+  // mètres : cadrée au plus juste, elle ne contient qu'une poignée de pixels
+  // d'orthophoto (18 x 13 px relevés sur un cas réel) que le lecteur PDF étire
+  // ensuite sur 20 cm de papier — une bouillie colorée. L'orthophoto plafonne à
+  // 20 cm/px, on ne peut donc pas gagner en finesse ; en revanche on peut cesser
+  // de grossir le vide. Élargir jusqu'à RP_DPI_FLOOR donne un plan net qui, en
+  // prime, montre les abords — la route, le bâtiment voisin, l'entrée de
+  // parcelle — c'est-à-dire ce qui permet de retrouver le lieu.
+  const minSpanX=(mapW/25.4*RP_DPI_FLOOR)*(2*Math.PI*6378137/(256*Math.pow(2,IGN_ORTHO_ZMAX)));
+  if(mxMax-mxMin<minSpanX){
+    const k=minSpanX/(mxMax-mxMin);
+    const cxm=(mxMin+mxMax)/2,cym=(myMin+myMax)/2;
+    const hw=(mxMax-mxMin)*k/2,hh=(myMax-myMin)*k/2;
+    mxMin=cxm-hw;mxMax=cxm+hw;myMin=cym-hh;myMax=cym+hh;
   }
   const [lonMinAdj,latMinAdj]=fromWebMercator(mxMin,myMin);
   const [lonMaxAdj,latMaxAdj]=fromWebMercator(mxMax,myMax);
