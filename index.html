@@ -904,6 +904,10 @@ function lonLatToTileXY(lon,lat,z){
 // aussi les secteurs livrés en très haute résolution, que les millésimes
 // nationaux ne contiennent pas.
 const IGN_ORTHO_LAYER='ORTHOIMAGERY.ORTHOPHOTOS';
+// Niveau de zoom le plus fin réellement servi pour cette couche (voir
+// verif-couverture.html, qui permet de le revérifier si l'IGN fait évoluer son
+// service). Les niveaux 20 et 21 ne renvoient aucune tuile, nulle part.
+const IGN_ORTHO_ZMAX=19;
 
 // Choisit le zoom nécessaire pour que la mosaïque de tuiles fournisse au moins
 // la résolution demandée (en pixels, pour la taille d'impression visée) —
@@ -3269,12 +3273,17 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   const [lonMaxAdj,latMaxAdj]=fromWebMercator(mxMax,myMax);
 
   // Zoom calculé pour fournir au moins la résolution d'impression visée — jamais
-  // dégradé pour économiser des tuiles. Le plafond est fixé à 21 et non au
-  // niveau 19 de la BD ORTHO : sur un chantier de quelques dizaines de mètres,
-  // s'arrêter à 19 revenait à étirer 300 px sur 20 cm de papier. La mosaïque
-  // générale monte plus haut là où l'IGN dispose de prises de vue plus fines, et
-  // tryFetchIgnBasemap redescend d'elle-même quand le secteur ne sert pas le
-  // niveau demandé.
+  // dégradé pour économiser des tuiles.
+  //
+  // Le plafond est le niveau 19, mesuré et non supposé : un sondage du WMTS sur
+  // 65 points terrestres de métropole donne 100 % de couverture au niveau 15,
+  // 98,5 % au 17, 96,9 % au 19 — et 0 % aux niveaux 20 et 21, absents partout.
+  // Viser plus haut ne rapportait donc aucun détail : cela faisait seulement
+  // demander deux dalles complètes vouées au 404 avant de retomber sur le 19,
+  // soit une centaine de requêtes inutiles et l'attente correspondante à chaque
+  // compte-rendu. La résolution native de la BD ORTHO (20 cm/px) est le vrai
+  // plafond ; sur un chantier de quelques dizaines de mètres, le fond de plan
+  // sera forcément peu défini, aucun réglage ne peut inventer la donnée.
   //
   // Le plancher est lui aussi calculé, et non figé à un niveau donné : un
   // plancher fixe imposait le zoom 17 même sur une emprise de plusieurs
@@ -3282,8 +3291,8 @@ async function buildPhotoReportPDF(points,setStatus,projectTitle){
   // le budget de tuiles et la page repartait sans aucun fond de carte, alors
   // qu'un niveau de moins l'aurait rendue nettement au-delà du nécessaire.
   const zoomFor=dpi=>Math.max(
-    pickZoomForSpan(mxMax-mxMin,mapW/25.4*dpi,6,21),
-    pickZoomForSpan(myMax-myMin,mapH/25.4*dpi,6,21)
+    pickZoomForSpan(mxMax-mxMin,mapW/25.4*dpi,6,IGN_ORTHO_ZMAX),
+    pickZoomForSpan(myMax-myMin,mapH/25.4*dpi,6,IGN_ORTHO_ZMAX)
   );
 
   setStatus('Recherche d\'une connexion pour le fond de carte IGN…');
