@@ -2808,8 +2808,14 @@ function rpLabel(doc,text,x,y,w){
 // Repère numéroté — dessin strictement identique sur le plan et sur les fiches
 // photo : c'est ce qui permet de relier une photo à sa position d'un coup d'œil.
 // Halo blanc systématique : reste lisible sur n'importe quel fond aérien.
+// Le chiffre occupe le disque au plus près : à rayon égal, un numéro plus grand
+// se lit de plus loin et supporte mieux la photocopie. Le facteur dépend du
+// nombre de chiffres, sans quoi il faudrait le régler pour le pire cas — un
+// numéro à trois chiffres — et gaspiller la place sur les repères courants, qui
+// sont l'immense majorité.
 function rpMarker(doc,x,y,label,r){
-  const fs=r*1.85;
+  const n=String(label).length;
+  const fs=r*(n>=3?1.65:n===2?2.05:2.35);
   doc.setFillColor(...RP.paper);doc.circle(x,y,r+1.05,'F');
   doc.setFillColor(...RP.data);doc.circle(x,y,r,'F');
   doc.setDrawColor(...RP.dataDark);doc.setLineWidth(0.3);doc.circle(x,y,r,'S');
@@ -3143,6 +3149,37 @@ function computeLabelLayout(projected,planX,planY,planW,planH){
       if(score>bestScore){bestScore=score;best={x,y};}
     }
     if(best)pos[i]=best;
+  }
+
+  // Garantie finale : plus aucun halo qui en recouvre un autre. Les passes
+  // précédentes arbitrent entre trois contraintes concurrentes et peuvent, dans
+  // une configuration très dense, s'arrêter sur un compromis où deux repères se
+  // frôlent encore. Ici une seule règle s'applique, et elle prime sur la
+  // longueur du segment : deux repères qui se chevauchent rendent le plan faux,
+  // un segment un peu plus long ne gêne personne.
+  const HARD=RP_MARK_HALO*2+0.6;
+  for(let iter=0;iter<200;iter++){
+    let chevauche=false;
+    for(let i=0;i<n;i++){
+      for(let j=i+1;j<n;j++){
+        const dx=pos[j].x-pos[i].x,dy=pos[j].y-pos[i].y;
+        let dist=Math.hypot(dx,dy);
+        if(dist>=HARD)continue;
+        chevauche=true;
+        let ux,uy;
+        if(dist<0.01){
+          const a=(i*2.399963+j*0.618034)*Math.PI;
+          ux=Math.cos(a);uy=Math.sin(a);dist=0.01;
+        }else{ux=dx/dist;uy=dy/dist;}
+        const push=(HARD-dist)/2+0.05;
+        pos[i].x-=ux*push;pos[i].y-=uy*push;
+        pos[j].x+=ux*push;pos[j].y+=uy*push;
+      }
+    }
+    for(let i=0;i<n;i++){
+      pos[i].x=clampX(pos[i].x);pos[i].y=clampY(pos[i].y);
+    }
+    if(!chevauche)break;
   }
   return pos;
 }
