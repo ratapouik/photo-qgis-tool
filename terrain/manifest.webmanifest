@@ -1,0 +1,32 @@
+{
+  "name": "Relevé — photos vers QGIS",
+  "short_name": "Relevé",
+  "description": "Prise de photos géolocalisées, compression, export ZIP QGIS et compte-rendu PDF. Tout reste sur l'appareil.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1d2d3d",
+  "theme_color": "#1d2d3d",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
