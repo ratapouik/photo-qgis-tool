@@ -1,5 +1,5 @@
 // Relevé — service worker : l'appli et ses librairies restent disponibles hors-ligne.
-const CACHE = 'releve-v1';
+const CACHE = 'releve-v3';
 const CORE = ['./', './index.html', './manifest.webmanifest', './support.js', './ds/styles.css', './ds/_ds_bundle.js', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

@@ -21,154 +21,228 @@ if ("serviceWorker" in navigator && location.protocol === "https:") {
 <link rel="stylesheet" href="ds/styles.css">
 <script src="ds/_ds_bundle.js"></script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-html,body{margin:0;background:#f2f2f3;font-family:"Barlow",system-ui,sans-serif;color:#1d1f20;-webkit-text-size-adjust:100%}
+html,body{margin:0;background:#f2f2f3;color:#1d1f20;font-family:"Barlow",system-ui,sans-serif;-webkit-text-size-adjust:100%}
 a{color:#416180;text-decoration:none}a:hover{color:#1d2d3d}
-button{font-family:inherit}
-input,textarea,select{font-family:inherit}
+button,input,select,textarea{font-family:inherit}
 *:focus-visible{outline:2px solid #5980a6;outline-offset:2px}
+.leaflet-container{background:#e7e7ea;font-family:"Barlow",system-ui,sans-serif}
 </style>
 </helmet>
 
 <div style="max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:#f2f2f3">
 
-  <div style="background:#1d2d3d;color:#f2f2f3;padding:16px 16px 14px">
-    <div style="display:flex;align-items:flex-end;gap:12px">
-      <div style="flex:1">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#94bce3">Photos → QGIS · terrain</div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;line-height:1.05;letter-spacing:-.01em">RELEVÉ</div>
+  <div style="padding:14px 16px 12px;border-bottom:1px solid #d4d4d7;background:#f2f2f3">
+    <div style="display:flex;align-items:flex-end;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#597ea3">{{ kicker }}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:25px;line-height:1.08">{{ title }}</div>
       </div>
-      <div style="text-align:right;font-size:11.5px;line-height:1.5;color:rgba(242,242,243,.7)">{{ headerCount }}<br>{{ headerWeight }}</div>
+      <div style="border:1px solid #d4d4d7;padding:6px 9px;font-size:11.5px;color:#5d5d60;white-space:nowrap">{{ chip }}</div>
     </div>
-  </div>
-
-  <div style="display:flex;border-bottom:1px solid #d4d4d7;background:#f5f5f8">
-    <button onClick="{{ goPrises }}" style="flex:1;min-height:48px;background:transparent;border:0;border-bottom:2px solid {{ tabPrises }};font-family:'Barlow Condensed',sans-serif;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#1d1f20;cursor:pointer">Prises</button>
-    <button onClick="{{ goExport }}" style="flex:1;min-height:48px;background:transparent;border:0;border-bottom:2px solid {{ tabExport }};font-family:'Barlow Condensed',sans-serif;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#1d1f20;cursor:pointer">Export</button>
   </div>
 
   <input type="file" accept="image/*" capture="environment" multiple ref="{{ camRef }}" onChange="{{ onFiles }}" style="display:none">
   <input type="file" accept="image/*,.heic,.heif" multiple ref="{{ fileRef }}" onChange="{{ onFiles }}" style="display:none">
 
-  <sc-if value="{{ isPrises }}" hint-placeholder-val="{{ true }}">
-    <div style="flex:1;padding:14px 14px 28px">
+  <div style="flex:1;display:flex;flex-direction:column;min-height:0">
 
-      <div style="display:flex;gap:8px;margin-bottom:14px">
-        <button onClick="{{ openCamera }}" style="flex:2;min-height:56px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer" style-active="background:#416180">Prendre une photo</button>
-        <button onClick="{{ openFiles }}" style="flex:1;min-height:56px;background:transparent;color:#1d1f20;border:1px solid #d4d4d7;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer" style-active="background:#eef6ff">Galerie</button>
-      </div>
-
-      <div class="blueprint" style="padding:12px 14px;margin-bottom:16px">
-        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-        <div style="display:flex;align-items:center;gap:10px">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#416180" stroke-width="1.5" style="flex:none"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
-          <div style="flex:1;font-size:12.5px;line-height:1.5;color:#424244">{{ gpsLine }}</div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button onClick="{{ locate }}" style="flex:1;min-height:44px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:12.5px;cursor:pointer" style-active="background:#eef6ff">Relever ma position</button>
-          <button onClick="{{ fillMissing }}" style="flex:1;min-height:44px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:12.5px;cursor:pointer" style-active="background:#eef6ff">Placer les sans-GPS</button>
+    <sc-if value="{{ isCarte }}" hint-placeholder-val="{{ false }}">
+      <div ref="{{ mapRef }}" style="flex:1;min-height:340px;background:#e7e7ea"></div>
+      <div style="padding:10px 14px 14px">
+        <div class="blueprint" style="padding:12px 14px;background:#f5f5f8">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="font-size:12.5px;line-height:1.6;color:#424244">{{ mapHint }}</div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button onClick="{{ locate }}" style="flex:1;min-height:44px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer" style-active="background:#416180">Ma position</button>
+            <button onClick="{{ fillMissing }}" style="flex:1;min-height:44px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:12.5px;cursor:pointer" style-active="background:#eef6ff">Placer les sans-GPS</button>
+          </div>
         </div>
       </div>
+    </sc-if>
 
-      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
-        <div style="border:1px dashed #94bce3;padding:34px 18px;text-align:center;color:#416180;font-size:13.5px;line-height:1.6">
-          Aucune prise pour l'instant.<br>Les photos restent sur le téléphone : rien n'est envoyé sur un serveur.
-        </div>
-      </sc-if>
-
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <sc-for list="{{ photos }}" as="p" hint-placeholder-count="0">
-          <div style="border:1px solid #d4d4d7;background:#f5f5f8;padding:10px;display:flex;gap:11px;align-items:flex-start">
-            <div class="duotone" style="width:74px;height:74px;flex:none;border:1px solid #b7b7ba;overflow:hidden">
-              <img src="{{ p.url }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">
+    <sc-if value="{{ isReleves }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;padding:12px 14px 18px">
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px dashed #94bce3;padding:30px 18px;text-align:center;color:#416180;font-size:13.5px;line-height:1.65">
+            Aucun relevé.<br>Les photos et leurs positions restent sur le téléphone : rien n'est envoyé sur un serveur.
+            <div style="display:flex;gap:8px;margin-top:16px">
+              <button onClick="{{ openCamera }}" style="flex:1;min-height:48px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer">Prendre une photo</button>
+              <button onClick="{{ openFiles }}" style="flex:1;min-height:48px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:13px;cursor:pointer">Galerie</button>
             </div>
-            <div style="flex:1;min-width:0">
-              <input value="{{ p.name }}" onChange="{{ p.onName }}" style="width:100%;box-sizing:border-box;min-height:40px;padding:0 9px;font-size:14.5px;background:#f2f2f3;border:1px solid #d4d4d7;border-radius:2px;margin-bottom:6px">
-              <div style="font-size:11.5px;line-height:1.55;color:#5d5d60">{{ p.meta }}</div>
-              <div style="display:flex;gap:6px;margin-top:8px">
-                <button onClick="{{ p.onLocate }}" style="flex:1;min-height:38px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:11.5px;cursor:pointer" style-active="background:#eef6ff">{{ p.locLabel }}</button>
-                <button onClick="{{ p.onRemove }}" style="width:44px;min-height:38px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:11.5px;color:#416180;cursor:pointer" style-active="background:#eef6ff">×</button>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <sc-for list="{{ rows }}" as="p" hint-placeholder-count="0">
+            <div style="border:1px solid #d4d4d7;background:#f5f5f8;padding:10px;display:flex;gap:11px;align-items:flex-start">
+              <div class="duotone" style="width:72px;height:72px;flex:none;border:1px solid #b7b7ba;overflow:hidden;background:#2c455d">
+                <sc-if value="{{ p.hasUrl }}" hint-placeholder-val="{{ false }}">
+                  <img src="{{ p.url }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">
+                </sc-if>
+              </div>
+              <div style="flex:1;min-width:0">
+                <input value="{{ p.name }}" onChange="{{ p.onName }}" style="width:100%;box-sizing:border-box;min-height:40px;padding:0 9px;font-size:14.5px;background:#f2f2f3;border:1px solid #d4d4d7;border-radius:2px;margin-bottom:6px">
+                <div style="font-size:11.5px;line-height:1.55;color:#5d5d60">{{ p.meta }}</div>
+                <div style="display:inline-block;margin-top:6px;padding:2px 7px;font-family:'Barlow Condensed',sans-serif;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;border:1px solid {{ p.tagBorder }};background:{{ p.tagBg }};color:{{ p.tagFg }}">{{ p.tagLabel }}</div>
+                <div style="display:flex;gap:6px;margin-top:8px">
+                  <button onClick="{{ p.onLocate }}" style="flex:1;min-height:38px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:11.5px;cursor:pointer" style-active="background:#eef6ff">{{ p.locLabel }}</button>
+                  <button onClick="{{ p.onMap }}" style="flex:1;min-height:38px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:11.5px;cursor:pointer" style-active="background:#eef6ff">Sur la carte</button>
+                  <button onClick="{{ p.onRemove }}" style="width:42px;min-height:38px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:13px;color:#416180;cursor:pointer" style-active="background:#eef6ff">×</button>
+                </div>
               </div>
             </div>
+          </sc-for>
+        </div>
+
+        <sc-if value="{{ hasPhotos }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button onClick="{{ renameAll }}" style="flex:1;min-height:46px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:13px;cursor:pointer" style-active="background:#eef6ff">Renommer en série</button>
+            <button onClick="{{ goExport }}" style="flex:1;min-height:46px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer" style-active="background:#416180">Exporter</button>
           </div>
-        </sc-for>
+        </sc-if>
       </div>
+    </sc-if>
 
-      <sc-if value="{{ hasPhotos }}" hint-placeholder-val="{{ false }}">
-        <div style="margin-top:16px;display:flex;gap:8px">
-          <button onClick="{{ renameAll }}" style="flex:1;min-height:46px;background:transparent;border:1px solid #d4d4d7;border-radius:2px;font-size:13px;cursor:pointer" style-active="background:#eef6ff">Renommer en série</button>
-          <button onClick="{{ goExport }}" style="flex:1;min-height:46px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;letter-spacing:.05em;text-transform:uppercase;cursor:pointer" style-active="background:#416180">Exporter</button>
-        </div>
-      </sc-if>
-    </div>
-  </sc-if>
-
-  <sc-if value="{{ isExport }}" hint-placeholder-val="{{ false }}">
-    <div style="flex:1;padding:16px 14px 28px">
-
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#597ea3;margin-bottom:10px">Projet</div>
-      <label style="display:block;font-size:12px;color:#5d5d60;margin-bottom:4px">Client</label>
-      <input value="{{ client }}" onChange="{{ onClient }}" placeholder="Nom du client" style="width:100%;box-sizing:border-box;min-height:46px;padding:0 11px;font-size:14.5px;background:#f5f5f8;border:1px solid #d4d4d7;border-radius:2px;margin-bottom:12px">
-      <label style="display:block;font-size:12px;color:#5d5d60;margin-bottom:4px">Ville</label>
-      <input value="{{ ville }}" onChange="{{ onVille }}" placeholder="Ville" style="width:100%;box-sizing:border-box;min-height:46px;padding:0 11px;font-size:14.5px;background:#f5f5f8;border:1px solid #d4d4d7;border-radius:2px;margin-bottom:20px">
-
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#597ea3;margin-bottom:10px">Compression</div>
-      <div style="display:flex;border:1px solid #d4d4d7;margin-bottom:8px">
-        <sc-for list="{{ qualities }}" as="q" hint-placeholder-count="3">
-          <button onClick="{{ q.onPick }}" style="flex:1;min-height:48px;border:0;border-left:1px solid {{ q.sep }};background:{{ q.bg }};color:{{ q.fg }};font-size:13px;cursor:pointer">{{ q.label }}</button>
-        </sc-for>
-      </div>
-      <p style="font-size:12.5px;line-height:1.6;color:#5d5d60;margin:0 0 20px">{{ qualityNote }}</p>
-
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#597ea3;margin-bottom:10px">Contenu du ZIP</div>
-      <div style="border:1px solid #d4d4d7;margin-bottom:20px">
-        <button onClick="{{ toggleProjet }}" style="width:100%;display:flex;align-items:center;gap:11px;min-height:52px;padding:0 12px;background:transparent;border:0;border-bottom:1px solid #e7e7ea;text-align:left;cursor:pointer" style-active="background:#eef6ff">
-          <span style="width:16px;height:16px;flex:none;border:1px solid #5980a6;background:{{ fillProjet }};display:block"></span>
-          <span style="flex:1;display:block"><span style="display:block;font-size:14px">Données QGIS</span><span style="display:block;font-size:11.5px;color:#7a7a7d">points.geojson · points.csv · lisez-moi.txt</span></span>
-        </button>
-        <button onClick="{{ togglePhotos }}" style="width:100%;display:flex;align-items:center;gap:11px;min-height:52px;padding:0 12px;background:transparent;border:0;border-bottom:1px solid #e7e7ea;text-align:left;cursor:pointer" style-active="background:#eef6ff">
-          <span style="width:16px;height:16px;flex:none;border:1px solid #5980a6;background:{{ fillPhotos }};display:block"></span>
-          <span style="flex:1;display:block"><span style="display:block;font-size:14px">Photos compressées</span><span style="display:block;font-size:11.5px;color:#7a7a7d">dossier photos/ · JPEG</span></span>
-        </button>
-        <button onClick="{{ togglePdf }}" style="width:100%;display:flex;align-items:center;gap:11px;min-height:52px;padding:0 12px;background:transparent;border:0;text-align:left;cursor:pointer" style-active="background:#eef6ff">
-          <span style="width:16px;height:16px;flex:none;border:1px solid #5980a6;background:{{ fillPdf }};display:block"></span>
-          <span style="flex:1;display:block"><span style="display:block;font-size:14px">Compte-rendu PDF</span><span style="display:block;font-size:11.5px;color:#7a7a7d">une page par photo, coordonnées et date</span></span>
-        </button>
-      </div>
-
-      <div class="blueprint" style="padding:12px 14px;margin-bottom:18px">
-        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-        <div style="font-size:12.5px;line-height:1.7;color:#424244">{{ summary }}</div>
-      </div>
-
-      <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
-        <div style="margin-bottom:16px">
-          <div style="height:8px;border:1px solid #b7b7ba;background:#e7e7ea"><div style="height:100%;width:{{ progWidth }};background:#5980a6"></div></div>
-          <div style="font-size:12px;color:#5d5d60;margin-top:6px">{{ busyLabel }}</div>
-        </div>
-      </sc-if>
-
-      <button onClick="{{ buildZip }}" disabled="{{ exportDisabled }}" style="width:100%;min-height:56px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;opacity:{{ exportOpacity }}" style-active="background:#416180">Générer le ZIP</button>
-
-      <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
-        <div style="margin-top:12px;border:1px solid #94bce3;background:rgba(148,188,227,.16);padding:13px 14px">
-          <div style="font-size:13px;line-height:1.6;color:#2c455d;margin-bottom:10px">{{ resultLine }}</div>
-          <div style="display:flex;gap:8px">
-            <button onClick="{{ download }}" style="flex:1;min-height:46px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Enregistrer</button>
-            <button onClick="{{ share }}" style="flex:1;min-height:46px;background:transparent;border:1px solid #5980a6;color:#416180;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Partager</button>
+    <sc-if value="{{ isCapture }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;display:flex;flex-direction:column;background:#12181f;color:#f2f2f3;padding:14px">
+        <div style="flex:1;position:relative;border:1px solid rgba(242,242,243,.28);background:#1d2d3d;background-image:repeating-linear-gradient(135deg,rgba(148,188,227,.16) 0 3px,transparent 3px 12px);min-height:260px;overflow:hidden">
+          <sc-if value="{{ hasLast }}" hint-placeholder-val="{{ false }}">
+            <img src="{{ lastUrl }}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35;display:block">
+          </sc-if>
+          <div style="position:absolute;left:14px;top:14px;width:22px;height:22px;border-left:1px solid rgba(242,242,243,.7);border-top:1px solid rgba(242,242,243,.7)"></div>
+          <div style="position:absolute;right:14px;top:14px;width:22px;height:22px;border-right:1px solid rgba(242,242,243,.7);border-top:1px solid rgba(242,242,243,.7)"></div>
+          <div style="position:absolute;left:14px;bottom:14px;width:22px;height:22px;border-left:1px solid rgba(242,242,243,.7);border-bottom:1px solid rgba(242,242,243,.7)"></div>
+          <div style="position:absolute;right:14px;bottom:14px;width:22px;height:22px;border-right:1px solid rgba(242,242,243,.7);border-bottom:1px solid rgba(242,242,243,.7)"></div>
+          <div style="position:absolute;left:0;right:0;bottom:0;padding:14px 16px 16px;background:linear-gradient(transparent,rgba(18,24,31,.9));font-size:12px;line-height:1.6">
+            <div>{{ captureGps }}</div>
+            <div style="color:rgba(242,242,243,.7);margin-top:2px">{{ captureLast }}</div>
           </div>
         </div>
-      </sc-if>
 
-      <p style="font-size:12px;line-height:1.6;color:#7a7a7d;margin:18px 0 0">Dans QGIS : glisser <em>points.geojson</em> dans la carte, puis régler le champ <em>photo</em> en widget « Pièce jointe » avec un chemin relatif au projet — les vignettes s'affichent alors dans le formulaire.</p>
-    </div>
-  </sc-if>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 4px 6px">
+          <button onClick="{{ openFiles }}" style="width:54px;height:54px;border:1px solid rgba(242,242,243,.26);background:rgba(242,242,243,.06);color:#f2f2f3;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.06em;cursor:pointer">GAL.</button>
+          <button onClick="{{ openCamera }}" style="width:82px;height:82px;border:3px solid #f2f2f3;background:#94bce3;border-radius:50%;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.1em;color:#1d2d3d">PRISE</button>
+          <div style="width:54px;text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11.5px;letter-spacing:.06em;color:rgba(242,242,243,.72)">{{ photoCount }}<br>PRISES</div>
+        </div>
+        <button onClick="{{ locate }}" style="min-height:44px;margin-top:8px;background:transparent;border:1px solid rgba(242,242,243,.26);color:#f2f2f3;border-radius:2px;font-size:12.5px;cursor:pointer">Rafraîchir la position GPS</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isExport }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;padding:14px 14px 20px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#597ea3;margin-bottom:10px">Projet</div>
+        <label style="display:block;font-size:12px;color:#5d5d60;margin-bottom:4px">Client</label>
+        <input value="{{ client }}" onChange="{{ onClient }}" placeholder="Nom du client" style="width:100%;box-sizing:border-box;min-height:46px;padding:0 11px;font-size:14.5px;background:#f5f5f8;border:1px solid #d4d4d7;border-radius:2px;margin-bottom:12px">
+        <label style="display:block;font-size:12px;color:#5d5d60;margin-bottom:4px">Ville</label>
+        <input value="{{ ville }}" onChange="{{ onVille }}" placeholder="Ville" style="width:100%;box-sizing:border-box;min-height:46px;padding:0 11px;font-size:14.5px;background:#f5f5f8;border:1px solid #d4d4d7;border-radius:2px;margin-bottom:20px">
+
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#597ea3;margin-bottom:10px">Contenu du ZIP</div>
+        <div style="border:1px solid #d4d4d7;margin-bottom:18px">
+          <button onClick="{{ toggleProjet }}" style="width:100%;display:flex;align-items:center;gap:11px;min-height:52px;padding:0 12px;background:transparent;border:0;border-bottom:1px solid #e7e7ea;text-align:left;cursor:pointer" style-active="background:#eef6ff">
+            <span style="width:16px;height:16px;flex:none;border:1px solid #5980a6;background:{{ fillProjet }};display:block"></span>
+            <span style="flex:1;display:block"><span style="display:block;font-size:14px">Données QGIS</span><span style="display:block;font-size:11.5px;color:#7a7a7d">points.geojson · points.csv · lisez-moi.txt</span></span>
+          </button>
+          <button onClick="{{ togglePhotos }}" style="width:100%;display:flex;align-items:center;gap:11px;min-height:52px;padding:0 12px;background:transparent;border:0;border-bottom:1px solid #e7e7ea;text-align:left;cursor:pointer" style-active="background:#eef6ff">
+            <span style="width:16px;height:16px;flex:none;border:1px solid #5980a6;background:{{ fillPhotos }};display:block"></span>
+            <span style="flex:1;display:block"><span style="display:block;font-size:14px">Photos compressées</span><span style="display:block;font-size:11.5px;color:#7a7a7d">dossier photos/ · JPEG</span></span>
+          </button>
+          <button onClick="{{ togglePdf }}" style="width:100%;display:flex;align-items:center;gap:11px;min-height:52px;padding:0 12px;background:transparent;border:0;text-align:left;cursor:pointer" style-active="background:#eef6ff">
+            <span style="width:16px;height:16px;flex:none;border:1px solid #5980a6;background:{{ fillPdf }};display:block"></span>
+            <span style="flex:1;display:block"><span style="display:block;font-size:14px">Compte-rendu PDF</span><span style="display:block;font-size:11.5px;color:#7a7a7d">une page par photo, coordonnées et date</span></span>
+          </button>
+        </div>
+
+        <div class="blueprint" style="padding:12px 14px;margin-bottom:16px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="font-size:12.5px;line-height:1.7;color:#424244">{{ summary }}</div>
+        </div>
+
+        <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-bottom:14px">
+            <div style="height:8px;border:1px solid #b7b7ba;background:#e7e7ea"><div style="height:100%;width:{{ progWidth }};background:#5980a6"></div></div>
+            <div style="font-size:12px;color:#5d5d60;margin-top:6px">{{ busyLabel }}</div>
+          </div>
+        </sc-if>
+
+        <button onClick="{{ buildZip }}" disabled="{{ exportDisabled }}" style="width:100%;min-height:54px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;opacity:{{ exportOpacity }}" style-active="background:#416180">Générer le ZIP</button>
+
+        <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px;border:1px solid #94bce3;background:rgba(148,188,227,.16);padding:13px 14px">
+            <div style="font-size:13px;line-height:1.6;color:#2c455d;margin-bottom:10px">{{ resultLine }}</div>
+            <div style="display:flex;gap:8px">
+              <button onClick="{{ download }}" style="flex:1;min-height:46px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Enregistrer</button>
+              <button onClick="{{ share }}" style="flex:1;min-height:46px;background:transparent;border:1px solid #5980a6;color:#416180;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:14px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer">Partager</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <p style="font-size:12px;line-height:1.6;color:#7a7a7d;margin:16px 0 0">Dans QGIS : glisser <em>points.geojson</em> dans la carte, puis régler le champ <em>photo</em> en widget « Pièce jointe » avec un chemin relatif au projet.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isReglages }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:1;padding:16px 14px 20px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#597ea3;margin-bottom:10px">Fond de carte</div>
+        <div style="display:flex;border:1px solid #d4d4d7;margin-bottom:20px">
+          <sc-for list="{{ basemaps }}" as="b" hint-placeholder-count="2">
+            <button onClick="{{ b.onPick }}" style="flex:1;min-height:48px;border:0;border-left:1px solid {{ b.sep }};background:{{ b.bg }};color:{{ b.fg }};font-size:13px;cursor:pointer">{{ b.label }}</button>
+          </sc-for>
+        </div>
+
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#597ea3;margin-bottom:10px">Compression à la prise</div>
+        <div style="display:flex;border:1px solid #d4d4d7;margin-bottom:8px">
+          <sc-for list="{{ qualities }}" as="q" hint-placeholder-count="3">
+            <button onClick="{{ q.onPick }}" style="flex:1;min-height:48px;border:0;border-left:1px solid {{ q.sep }};background:{{ q.bg }};color:{{ q.fg }};font-size:13px;cursor:pointer">{{ q.label }}</button>
+          </sc-for>
+        </div>
+        <p style="font-size:12.5px;line-height:1.6;color:#5d5d60;margin:0 0 20px">{{ qualityNote }}</p>
+
+        <div class="blueprint" style="padding:13px 14px;margin-bottom:20px">
+          <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+          <div style="font-size:12.5px;line-height:1.75;color:#424244">{{ about }}</div>
+        </div>
+
+        <button onClick="{{ reset }}" style="width:100%;min-height:48px;background:transparent;border:1px solid #416180;color:#416180;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:15px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer" style-active="background:#eef6ff">Vider le projet</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="position:sticky;bottom:0;flex:none;display:flex;border-top:1px solid #d4d4d7;background:#f5f5f8;padding-bottom:env(safe-area-inset-bottom)">
+    <button onClick="{{ goCarte }}" style="flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:0;border-top:2px solid {{ tabCarte }};cursor:pointer;color:#1d1f20">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Carte</span>
+    </button>
+    <button onClick="{{ goReleves }}" style="flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:0;border-top:2px solid {{ tabReleves }};cursor:pointer;color:#1d1f20;position:relative">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Relevés</span>
+      <span style="position:absolute;top:8px;right:calc(50% - 24px);min-width:17px;height:17px;padding:0 3px;background:#5980a6;color:#f2f2f3;font-size:10.5px;line-height:17px;text-align:center;font-family:'Barlow Condensed',sans-serif;display:{{ badgeShow }}">{{ photoCount }}</span>
+    </button>
+    <button onClick="{{ goCapture }}" style="flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:0;border-top:2px solid {{ tabCapture }};cursor:pointer;color:#1d1f20">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h3.5l1.5-2h8l1.5 2H21v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Capture</span>
+    </button>
+    <button onClick="{{ goExport }}" style="flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:0;border-top:2px solid {{ tabExport }};cursor:pointer;color:#1d1f20">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v12M7.5 11l4.5 4.5 4.5-4.5M4 20h16"/></svg>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Export</span>
+    </button>
+    <button onClick="{{ goReglages }}" style="flex:1;min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:transparent;border:0;border-top:2px solid {{ tabReglages }};cursor:pointer;color:#1d1f20">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase">Réglages</span>
+    </button>
+  </div>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:420,&quot;height&quot;:880}}">
 const ACC = '#5980a6', PAPER = '#f2f2f3', INK = '#1d1f20';
 const Q = { 'Légère': 0.85, 'Moyenne': 0.6, 'Forte': 0.35 };
 const MAXDIM = 2400;
+const TILES = {
+  'Ortho IGN': 'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg',
+  'Plan IGN': 'https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png'
+};
 
 const fmt = b => b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' Mo' : Math.round(b / 1024) + ' Ko';
 const pad = (n, l) => String(n).padStart(l, '0');
@@ -177,22 +251,83 @@ const safe = s => (s || '').replace(/[^\w\-. ]+/g, '-').trim();
 
 class Component extends DCLogic {
   state = {
-    tab: 'prises', photos: [], quality: 'Moyenne',
-    client: '', ville: '', optProjet: true, optPhotos: true, optPdf: true,
+    tab: 'releves', photos: [], target: null,
+    quality: 'Moyenne', basemap: 'Ortho IGN',
     gps: null, gpsMsg: 'Position non relevée.',
+    client: '', ville: '', optProjet: true, optPhotos: true, optPdf: true,
     busy: '', prog: 0, result: null, seq: 1
   };
 
   camRef = React.createRef();
   fileRef = React.createRef();
+  mapRef = React.createRef();
 
-  async exif(file) {
+  componentDidMount() { if (this.state.tab === 'carte') this.syncMap(false); }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (this.state.tab === 'carte') this.syncMap(prevState.basemap !== this.state.basemap);
+  }
+
+  // Le conteneur du sc-if est monté par le runtime après l'update du composant :
+  // le callback de ref est donc le seul moment fiable pour initialiser Leaflet.
+  attachMap = (node) => {
+    this._mapEl = node;
+    if (!node) { if (this._map) { this._map.remove(); this._map = null; } return; }
+    this.syncMap(false);
+    setTimeout(() => { if (this._map) this._map.invalidateSize(); }, 120);
+  };
+
+  syncMap(basemapChanged) {
+    const el = this._mapEl;
+    if (!el || !window.L) return;
+    if (!this._map) {
+      const pts = this.state.photos.filter(p => p.lat != null);
+      this._map = window.L.map(el).setView(pts.length ? [pts[0].lat, pts[0].lon] : [46.6, 2.4], pts.length ? 17 : 5);
+      this._layer = window.L.tileLayer(TILES[this.state.basemap], { maxZoom: 21, attribution: 'IGN — Géoplateforme' }).addTo(this._map);
+      this._map.on('click', e => {
+        const t = this.state.target;
+        if (!t) return;
+        this.setState({
+          target: null,
+          photos: this.state.photos.map(p => p.key === t
+            ? Object.assign({}, p, { lat: e.latlng.lat, lon: e.latlng.lng, acc: null, source: 'placée sur la carte' }) : p)
+        });
+      });
+      setTimeout(() => this._map && this._map.invalidateSize(), 250);
+    } else if (basemapChanged) {
+      this._layer.setUrl(TILES[this.state.basemap]);
+    }
+    (this._markers || []).forEach(m => this._map.removeLayer(m));
+    this._markers = this.state.photos.filter(p => p.lat != null).map(p => {
+      const m = window.L.marker([p.lat, p.lon], { draggable: true }).addTo(this._map).bindTooltip(p.name);
+      m.on('dragend', () => {
+        const ll = m.getLatLng();
+        this.setState({ photos: this.state.photos.map(q => q.key === p.key ? Object.assign({}, q, { lat: ll.lat, lon: ll.lng, source: 'ajustée à la main' }) : q) });
+      });
+      return m;
+    });
+    if (this._markers.length && !this._fitted) {
+      this._fitted = true;
+      this._map.fitBounds(window.L.featureGroup(this._markers).getBounds().pad(0.35));
+    }
+  }
+
+  async exifGps(file) {
     try {
       const m = await import('https://esm.sh/exifr@7.1.3');
       const g = await (m.gps || m.default.gps)(file);
-      if (g && isFinite(g.latitude)) return { lat: g.latitude, lon: g.longitude, source: 'EXIF' };
+      if (g && isFinite(g.latitude)) return { lat: g.latitude, lon: g.longitude };
     } catch (e) {}
     return null;
+  }
+
+  position() {
+    return new Promise((res, rej) => {
+      if (!navigator.geolocation) return rej(new Error('GPS indisponible'));
+      navigator.geolocation.getCurrentPosition(
+        p => res({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }),
+        rej, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    });
   }
 
   onFiles = async (e) => {
@@ -200,68 +335,61 @@ class Component extends DCLogic {
     e.target.value = '';
     if (!files.length) return;
     let seq = this.state.seq;
+    let live = this.state.gps;
+    if (!live) { try { live = await this.position(); } catch (err) {} }
     const added = [];
     for (const f of files) {
-      const pos = await this.exif(f);
+      const ex = await this.exifGps(f);
+      const pos = ex || (live ? { lat: live.lat, lon: live.lon } : null);
       added.push({
         key: 'p' + Date.now() + '-' + seq,
-        file: f,
-        url: URL.createObjectURL(f),
+        file: f, url: URL.createObjectURL(f),
         name: 'Photo-' + pad(seq++, 3),
-        size: f.size,
-        date: new Date(f.lastModified || Date.now()),
+        size: f.size, date: new Date(f.lastModified || Date.now()),
         lat: pos ? pos.lat : null, lon: pos ? pos.lon : null,
-        acc: null, source: pos ? 'EXIF' : null
+        acc: ex ? null : (live ? live.acc : null),
+        source: ex ? 'EXIF' : (live ? 'GPS appareil' : null)
       });
     }
-    this.setState({ photos: this.state.photos.concat(added), seq });
+    this._fitted = false;
+    this.setState({
+      photos: this.state.photos.concat(added), seq, gps: live || this.state.gps,
+      gpsMsg: live ? 'Position ' + live.lat.toFixed(5) + ', ' + live.lon.toFixed(5) + ' · ±' + Math.round(live.acc) + ' m' : this.state.gpsMsg,
+      tab: 'releves'
+    });
   };
 
-  position() {
-    return new Promise((res, rej) => {
-      if (!navigator.geolocation) return rej(new Error('GPS indisponible sur cet appareil.'));
-      navigator.geolocation.getCurrentPosition(
-        p => res({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy }),
-        err => rej(err),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
-    });
-  }
-
   locate = async () => {
-    this.setState({ gpsMsg: 'Recherche du signal…' });
+    this.setState({ gpsMsg: 'Recherche du signal GPS…' });
     try {
       const g = await this.position();
       this.setState({ gps: g, gpsMsg: 'Position ' + g.lat.toFixed(5) + ', ' + g.lon.toFixed(5) + ' · ±' + Math.round(g.acc) + ' m' });
+      if (this._map) this._map.setView([g.lat, g.lon], 18);
     } catch (e) {
-      this.setState({ gpsMsg: 'Position refusée ou indisponible. Autorise la localisation pour ce site.' });
+      this.setState({ gpsMsg: 'Position indisponible — autorise la localisation pour ce site.' });
     }
   };
 
   fillMissing = async () => {
     let g = this.state.gps;
-    if (!g) { try { g = await this.position(); } catch (e) { return this.setState({ gpsMsg: 'Position refusée ou indisponible.' }); } }
+    if (!g) { try { g = await this.position(); } catch (e) { return this.setState({ gpsMsg: 'Position indisponible — autorise la localisation.' }); } }
+    this._fitted = false;
     this.setState({
       gps: g,
       gpsMsg: 'Position ' + g.lat.toFixed(5) + ', ' + g.lon.toFixed(5) + ' · ±' + Math.round(g.acc) + ' m',
       photos: this.state.photos.map(p => p.lat == null
-        ? Object.assign({}, p, { lat: g.lat, lon: g.lon, acc: g.acc, source: 'GPS appareil' })
-        : p)
+        ? Object.assign({}, p, { lat: g.lat, lon: g.lon, acc: g.acc, source: 'GPS appareil' }) : p)
     });
   };
 
   async compress(p, quality) {
-    const img = await new Promise((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i); i.onerror = rej; i.src = p.url;
-    });
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = p.url; });
     const k = Math.min(1, MAXDIM / Math.max(img.width, img.height));
     const c = document.createElement('canvas');
     c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
     const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', Q[quality]));
-    const dataUrl = c.toDataURL('image/jpeg', Math.min(0.72, Q[quality]));
-    return { blob, dataUrl, w: c.width, h: c.height };
+    return { blob, dataUrl: c.toDataURL('image/jpeg', Math.min(0.72, Q[quality])), w: c.width, h: c.height };
   }
 
   buildZip = async () => {
@@ -272,7 +400,6 @@ class Component extends DCLogic {
     try {
       const JSZip = (await import('https://esm.sh/jszip@3.10.1')).default;
       const zip = new JSZip();
-      const rows = [];
       const done = [];
       for (let i = 0; i < s.photos.length; i++) {
         const p = s.photos[i];
@@ -280,7 +407,6 @@ class Component extends DCLogic {
         const fname = safe(p.name) + '.jpg';
         if (s.optPhotos) zip.file('photos/' + fname, c.blob);
         done.push({ p, c, fname });
-        rows.push(p);
         this.setState({ busy: 'Compression ' + (i + 1) + ' / ' + s.photos.length, prog: Math.round(70 * (i + 1) / s.photos.length) });
       }
 
@@ -289,8 +415,7 @@ class Component extends DCLogic {
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [+d.p.lon.toFixed(7), +d.p.lat.toFixed(7)] },
           properties: {
-            nom: d.p.name, photo: 'photos/' + d.fname,
-            date: stamp(d.p.date),
+            nom: d.p.name, photo: 'photos/' + d.fname, date: stamp(d.p.date),
             precision_m: d.p.acc ? Math.round(d.p.acc) : null,
             source_position: d.p.source || 'inconnue',
             poids_ko: Math.round(d.c.blob.size / 1024)
@@ -303,10 +428,9 @@ class Component extends DCLogic {
           title + '\n' + stamp(new Date()) + '\n' + done.length + ' photo(s)\n\n' +
           'Dans QGIS :\n' +
           '1. Décompresser ce dossier, puis glisser points.geojson dans la carte.\n' +
-          '2. Propriétés de la couche > Champs / Formulaire d\'attributs : passer le champ « photo » en widget « Pièce jointe », chemin relatif au projet.\n' +
+          '2. Propriétés de la couche > Formulaire d\'attributs : champ « photo » en widget « Pièce jointe », chemin relatif au projet.\n' +
           '3. Enregistrer le projet QGIS dans ce même dossier pour que les chemins relatifs fonctionnent.\n\n' +
-          'CRS des coordonnées : WGS 84 (EPSG:4326).\n' +
-          'Photos compressées en JPEG (préréglage ' + s.quality.toLowerCase() + ').\n');
+          'CRS : WGS 84 (EPSG:4326). Photos JPEG, préréglage ' + s.quality.toLowerCase() + '.\n');
       }
 
       if (s.optPdf) {
@@ -322,8 +446,7 @@ class Component extends DCLogic {
         doc.setDrawColor(89, 128, 166); doc.line(20, 64, 190, 64);
         done.forEach((d, i) => {
           doc.addPage();
-          const maxW = 170, maxH = 190;
-          const k = Math.min(maxW / d.c.w, maxH / d.c.h);
+          const k = Math.min(170 / d.c.w, 190 / d.c.h);
           const w = d.c.w * k, h = d.c.h * k;
           doc.setFontSize(15); doc.text(d.p.name, 20, 24);
           doc.addImage(d.c.dataUrl, 'JPEG', 20, 30, w, h);
@@ -347,53 +470,74 @@ class Component extends DCLogic {
   };
 
   renderVals() {
-    const s = this.state, total = s.photos.reduce((a, p) => a + p.size, 0);
+    const s = this.state, T = s.tab;
+    const total = s.photos.reduce((a, p) => a + p.size, 0);
     const missing = s.photos.filter(p => p.lat == null).length;
     const seg = (v, cur) => cur === v ? { bg: ACC, fg: PAPER, sep: ACC } : { bg: 'transparent', fg: INK, sep: '#d4d4d7' };
-    const est = Math.round(total * (Q[s.quality] * 0.55));
+    const last = s.photos[s.photos.length - 1];
+    const titles = { carte: ['Positions relevées', 'Carte'], releves: [s.photos.length + ' photo(s) · ' + (s.photos.length ? fmt(total) : 'projet vide'), 'Relevés'], capture: ['Compression ' + s.quality.toLowerCase(), 'Capture'], export: ['ZIP · GeoJSON · PDF', 'Export'], reglages: ['Local, hors-ligne', 'Réglages'] };
 
     return {
-      camRef: this.camRef, fileRef: this.fileRef,
+      kicker: titles[T][0], title: titles[T][1],
+      chip: missing ? missing + ' sans position' : (s.photos.length ? 'toutes géolocalisées' : 'hors-ligne'),
+
+      camRef: this.camRef, fileRef: this.fileRef, mapRef: this.attachMap,
       openCamera: () => this.camRef.current && this.camRef.current.click(),
       openFiles: () => this.fileRef.current && this.fileRef.current.click(),
       onFiles: this.onFiles,
 
-      isPrises: s.tab === 'prises', isExport: s.tab === 'export',
-      goPrises: () => this.setState({ tab: 'prises' }), goExport: () => this.setState({ tab: 'export' }),
-      tabPrises: s.tab === 'prises' ? ACC : 'transparent',
-      tabExport: s.tab === 'export' ? ACC : 'transparent',
+      isCarte: T === 'carte', isReleves: T === 'releves', isCapture: T === 'capture',
+      isExport: T === 'export', isReglages: T === 'reglages',
+      goCarte: () => this.setState({ tab: 'carte' }), goReleves: () => this.setState({ tab: 'releves' }),
+      goCapture: () => this.setState({ tab: 'capture' }), goExport: () => this.setState({ tab: 'export' }),
+      goReglages: () => this.setState({ tab: 'reglages' }),
+      tabCarte: T === 'carte' ? ACC : 'transparent',
+      tabReleves: T === 'releves' ? ACC : 'transparent',
+      tabCapture: T === 'capture' ? ACC : 'transparent',
+      tabExport: T === 'export' ? ACC : 'transparent',
+      tabReglages: T === 'reglages' ? ACC : 'transparent',
 
-      headerCount: s.photos.length + (s.photos.length === 1 ? ' prise' : ' prises'),
-      headerWeight: s.photos.length ? fmt(total) + ' brut' : 'hors-ligne',
+      photoCount: s.photos.length,
+      badgeShow: s.photos.length ? 'block' : 'none',
       isEmpty: s.photos.length === 0,
       hasPhotos: s.photos.length > 0,
 
-      gpsLine: s.gpsMsg + (missing ? ' · ' + missing + ' photo(s) sans position' : ''),
+      mapHint: s.target
+        ? 'Touchez la carte pour placer « ' + (s.photos.find(p => p.key === s.target) || {}).name + ' ». Les marqueurs se déplacent au doigt.'
+        : s.gpsMsg + (missing ? ' · ' + missing + ' photo(s) sans position' : ''),
+      gpsLine: s.gpsMsg,
       locate: this.locate, fillMissing: this.fillMissing,
 
-      photos: s.photos.map((p, i) => ({
-        url: p.url, name: p.name,
-        meta: fmt(p.size) + ' · ' + stamp(p.date) + ' · ' + (p.lat != null
-          ? p.lat.toFixed(5) + ', ' + p.lon.toFixed(5) + (p.acc ? ' ±' + Math.round(p.acc) + ' m' : '') + ' (' + p.source + ')'
-          : 'sans position'),
-        locLabel: p.lat != null ? 'Repositionner ici' : 'Utiliser ma position',
-        onName: e => {
-          const v = e.target.value;
-          this.setState({ photos: s.photos.map((q, j) => j === i ? Object.assign({}, q, { name: v }) : q) });
-        },
-        onLocate: async () => {
-          let g = s.gps;
-          try { g = await this.position(); } catch (e) { if (!g) return this.setState({ gpsMsg: 'Position refusée ou indisponible.' }); }
-          this.setState({
-            gps: g,
-            photos: s.photos.map((q, j) => j === i ? Object.assign({}, q, { lat: g.lat, lon: g.lon, acc: g.acc, source: 'GPS appareil' }) : q)
-          });
-        },
-        onRemove: () => {
-          URL.revokeObjectURL(p.url);
-          this.setState({ photos: s.photos.filter((q, j) => j !== i) });
-        }
-      })),
+      lastUrl: last ? last.url : '',
+      lastOpacity: last ? '.35' : '0',
+      hasLast: !!last,
+      captureGps: s.gps
+        ? 'GPS ' + s.gps.lat.toFixed(5) + ', ' + s.gps.lon.toFixed(5) + ' · ±' + Math.round(s.gps.acc) + ' m'
+        : 'Position non relevée — touchez « Rafraîchir la position GPS ».',
+      captureLast: last ? 'Dernière prise : ' + last.name : 'Aucune prise pour l\u2019instant',
+
+      rows: s.photos.map((p, i) => {
+        const t = p.lat == null
+          ? { label: 'Sans position', bg: 'transparent', fg: '#2c455d', border: '#94bce3' }
+          : p.source === 'EXIF'
+            ? { label: 'Position EXIF', bg: '#eef6ff', fg: '#416180', border: '#b5d9fd' }
+            : { label: p.source, bg: '#e7e7ea', fg: '#424244', border: '#d4d4d7' };
+        return {
+          url: p.url, hasUrl: !!p.url, name: p.name,
+          meta: fmt(p.size) + ' · ' + stamp(p.date) + (p.lat != null ? ' · ' + p.lat.toFixed(5) + ', ' + p.lon.toFixed(5) + (p.acc ? ' ±' + Math.round(p.acc) + ' m' : '') : ''),
+          tagLabel: t.label, tagBg: t.bg, tagFg: t.fg, tagBorder: t.border,
+          locLabel: p.lat != null ? 'Repositionner ici' : 'Utiliser ma position',
+          onName: e => { const v = e.target.value; this.setState({ photos: s.photos.map((q, j) => j === i ? Object.assign({}, q, { name: v }) : q) }); },
+          onLocate: async () => {
+            let g = s.gps;
+            try { g = await this.position(); } catch (e) { if (!g) return this.setState({ gpsMsg: 'Position indisponible — autorise la localisation.' }); }
+            this._fitted = false;
+            this.setState({ gps: g, photos: s.photos.map((q, j) => j === i ? Object.assign({}, q, { lat: g.lat, lon: g.lon, acc: g.acc, source: 'GPS appareil' }) : q) });
+          },
+          onMap: () => this.setState({ tab: 'carte', target: p.key }),
+          onRemove: () => { URL.revokeObjectURL(p.url); this.setState({ photos: s.photos.filter((q, j) => j !== i) }); }
+        };
+      }),
       renameAll: () => {
         const base = window.prompt('Motif de renommage — {n} est remplacé par le numéro', 'Photo-{n}');
         if (!base) return;
@@ -403,29 +547,19 @@ class Component extends DCLogic {
       client: s.client, ville: s.ville,
       onClient: e => this.setState({ client: e.target.value }),
       onVille: e => this.setState({ ville: e.target.value }),
-      qualities: ['Légère', 'Moyenne', 'Forte'].map(q => Object.assign({ label: q, onPick: () => this.setState({ quality: q }) }, seg(q, s.quality))),
-      qualityNote: s.quality === 'Moyenne'
-        ? 'Moyenne : poids divisé par cinq à dix, sans perte visible à l\u2019écran ni au tirage.'
-        : s.quality === 'Légère'
-          ? 'Légère : détail maximal, fichiers lourds à partager.'
-          : 'Forte : ZIP minimal, à réserver aux photos de constat.',
-
       fillProjet: s.optProjet ? ACC : 'transparent',
       fillPhotos: s.optPhotos ? ACC : 'transparent',
       fillPdf: s.optPdf ? ACC : 'transparent',
       toggleProjet: () => this.setState({ optProjet: !s.optProjet }),
       togglePhotos: () => this.setState({ optPhotos: !s.optPhotos }),
       togglePdf: () => this.setState({ optPdf: !s.optPdf }),
-
       summary: s.photos.length
-        ? s.photos.length + ' photo(s) · ' + fmt(total) + ' brut → environ ' + fmt(est) + ' après compression' + (missing ? ' · ' + missing + ' sans position, exclue(s) du GeoJSON' : ' · toutes géolocalisées')
-        : 'Ajoute des photos dans l\u2019onglet Prises.',
-
+        ? s.photos.length + ' photo(s) · ' + fmt(total) + ' brut → environ ' + fmt(Math.round(total * Q[s.quality] * 0.55)) + ' après compression' + (missing ? ' · ' + missing + ' sans position, exclue(s) du GeoJSON' : ' · toutes géolocalisées')
+        : 'Ajoute des photos depuis l\u2019onglet Capture.',
       busy: !!s.busy, busyLabel: s.busy, progWidth: s.prog + '%',
       exportDisabled: !s.photos.length || !!s.busy,
       exportOpacity: (!s.photos.length || !!s.busy) ? '.45' : '1',
       buildZip: this.buildZip,
-
       hasResult: !!s.result,
       resultLine: s.result ? s.result.name + ' · ' + fmt(s.result.size) + ' prêt.' : '',
       download: () => {
@@ -442,6 +576,20 @@ class Component extends DCLogic {
           if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: r.name });
           else this.setState({ gpsMsg: 'Partage de fichier non pris en charge — utilise Enregistrer.' });
         } catch (e) {}
+      },
+
+      basemaps: ['Ortho IGN', 'Plan IGN'].map(b => Object.assign({ label: b, onPick: () => this.setState({ basemap: b }) }, seg(b, s.basemap))),
+      qualities: ['Légère', 'Moyenne', 'Forte'].map(q => Object.assign({ label: q, onPick: () => this.setState({ quality: q }) }, seg(q, s.quality))),
+      qualityNote: s.quality === 'Moyenne'
+        ? 'Moyenne : poids divisé par cinq à dix, sans perte visible — le préréglage de l\u2019outil web.'
+        : s.quality === 'Légère'
+          ? 'Légère : détail maximal, fichiers plus lourds à partager.'
+          : 'Forte : ZIP minimal, à réserver aux photos de constat.',
+      about: 'Tout le traitement se fait sur le téléphone : aucune photo, aucune coordonnée ne part vers un serveur. Les fonds de carte viennent de la Géoplateforme IGN et sont mis en cache par le navigateur au fur et à mesure. Export : GeoJSON et CSV en WGS 84, photos JPEG, compte-rendu PDF.',
+      reset: () => {
+        s.photos.forEach(p => URL.revokeObjectURL(p.url));
+        this._fitted = false;
+        this.setState({ photos: [], result: null, target: null, seq: 1, client: '', ville: '' });
       }
     };
   }
