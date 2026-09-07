@@ -132,7 +132,7 @@ input,textarea,select{font-family:inherit}
         </button>
         <button onClick="{{ togglePdf }}" style="width:100%;display:flex;align-items:center;gap:11px;min-height:52px;padding:0 12px;background:transparent;border:0;text-align:left;cursor:pointer" style-active="background:#eef6ff">
           <span style="width:16px;height:16px;flex:none;border:1px solid #5980a6;background:{{ fillPdf }};display:block"></span>
-          <span style="flex:1;display:block"><span style="display:block;font-size:14px">Compte-rendu PDF</span><span style="display:block;font-size:11.5px;color:#7a7a7d">une page par photo, coordonnées et date</span></span>
+          <span style="flex:1;display:block"><span style="display:block;font-size:14px">Compte-rendu PDF</span><span style="display:block;font-size:11.5px;color:#7a7a7d">plan de localisation sur orthophoto, puis une fiche par photo</span></span>
         </button>
       </div>
 
@@ -174,6 +174,31 @@ const fmt = b => b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' M
 const pad = (n, l) => String(n).padStart(l, '0');
 const stamp = d => pad(d.getDate(), 2) + '/' + pad(d.getMonth() + 1, 2) + '/' + d.getFullYear() + ' ' + pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2);
 const safe = s => (s || '').replace(/[^\w\-. ]+/g, '-').trim();
+
+// Le compte-rendu PDF n'est pas chargé au démarrage : sur le terrain on ouvre
+// l'appli pour photographier, pas pour éditer un livrable. jsPDF et la mise en
+// page ne descendent donc qu'au moment de l'export — et le service worker les
+// garde ensuite en cache, y compris hors ligne.
+const JSPDF_URL = 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js';
+const REPORT_URL = '../compte-rendu.js';
+function loadScript(url) {
+  return new Promise((res, rej) => {
+    if (document.querySelector('script[data-loaded="' + url + '"]')) return res();
+    const el = document.createElement('script');
+    el.src = url;
+    el.dataset.loaded = url;
+    el.onload = () => res();
+    el.onerror = () => { el.remove(); rej(new Error('Chargement impossible : ' + url)); };
+    document.head.appendChild(el);
+  });
+}
+// Mise en page identique à celle de l'application de bureau : le client reçoit
+// le même document, qu'il ait été produit au bureau ou depuis le téléphone.
+async function loadReportBuilder() {
+  if (!window.jspdf) await loadScript(JSPDF_URL);
+  if (!window.buildPhotoReportPDF) await loadScript(REPORT_URL);
+  return window.buildPhotoReportPDF;
+}
 
 class Component extends DCLogic {
   state = {
@@ -274,6 +299,9 @@ class Component extends DCLogic {
       const zip = new JSZip();
       const rows = [];
       const done = [];
+      // Motif d'absence du compte-rendu, remonté avec le résultat : l'écran
+      // d'export ne montre pas les messages GPS de l'onglet « Prises ».
+      let pdfNote = '';
       for (let i = 0; i < s.photos.length; i++) {
         const p = s.photos[i];
         const c = await this.compress(p, s.quality);
@@ -310,37 +338,41 @@ class Component extends DCLogic {
       }
 
       if (s.optPdf) {
-        this.setState({ busy: 'Compte-rendu PDF…', prog: 80 });
-        const mod = await import('https://esm.sh/jspdf@2.5.2');
-        const JsPDF = mod.jsPDF || mod.default.jsPDF || mod.default;
-        const doc = new JsPDF({ unit: 'mm', format: 'a4' });
-        doc.setFontSize(22); doc.text(title, 20, 34);
-        doc.setFontSize(11);
-        doc.text('Compte-rendu photographique', 20, 44);
-        doc.text(stamp(new Date()), 20, 51);
-        doc.text(done.length + ' photo(s) — coordonnées WGS 84', 20, 58);
-        doc.setDrawColor(89, 128, 166); doc.line(20, 64, 190, 64);
-        done.forEach((d, i) => {
-          doc.addPage();
-          const maxW = 170, maxH = 190;
-          const k = Math.min(maxW / d.c.w, maxH / d.c.h);
-          const w = d.c.w * k, h = d.c.h * k;
-          doc.setFontSize(15); doc.text(d.p.name, 20, 24);
-          doc.addImage(d.c.dataUrl, 'JPEG', 20, 30, w, h);
-          doc.setFontSize(9.5);
-          const y = 30 + h + 8;
-          doc.text('Prise le ' + stamp(d.p.date), 20, y);
-          doc.text(d.p.lat != null
-            ? 'Position ' + d.p.lat.toFixed(5) + ', ' + d.p.lon.toFixed(5) + (d.p.acc ? ' (±' + Math.round(d.p.acc) + ' m)' : '') + ' — ' + (d.p.source || '')
-            : 'Position non renseignée', 20, y + 5);
-          doc.text('Fichier photos/' + d.fname + ' — page ' + (i + 1) + ' / ' + done.length, 20, y + 10);
-        });
-        zip.file(safe(title) + '.pdf', doc.output('blob'));
+        // Le compte-rendu reprend la mise en page de l'application de bureau :
+        // plan de localisation sur orthophoto IGN avec repères numérotés, puis
+        // une fiche par photo. Il lui faut donc des points géolocalisés — les
+        // prises sans position sont déjà exclues du GeoJSON, elles le sont ici
+        // aussi, et si aucune n'est localisée le ZIP part sans compte-rendu
+        // plutôt qu'avec un plan vide.
+        const located = done.filter(d => d.p.lat != null && d.p.lon != null);
+        if (!located.length) {
+          pdfNote = 'Sans compte-rendu PDF : aucune prise n\u2019est localisée.';
+        } else {
+          this.setState({ busy: 'Compte-rendu PDF…', prog: 80 });
+          try {
+            const build = await loadReportBuilder();
+            const doc = await build(
+              located.map(d => ({
+                lat: d.p.lat, lon: d.p.lon,
+                blob: d.c.blob,
+                displayName: d.p.name
+              })),
+              txt => this.setState({ busy: txt }),
+              title
+            );
+            zip.file(safe(title) + '.pdf', doc.output('blob'));
+          } catch (e) {
+            // Le fond de carte IGN se replie déjà tout seul sur un plan
+            // schématique hors ligne ; si le générateur lui-même n'a pas pu
+            // être chargé, on livre quand même les données et les photos.
+            pdfNote = 'Sans compte-rendu PDF (' + (e && e.message ? e.message : e) + ') — le reste de l\u2019export est complet.';
+          }
+        }
       }
 
       this.setState({ busy: 'Assemblage du ZIP…', prog: 92 });
       const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-      this.setState({ busy: '', prog: 100, result: { blob, name: safe(title) + '.zip', size: blob.size } });
+      this.setState({ busy: '', prog: 100, result: { blob, name: safe(title) + '.zip', size: blob.size, note: pdfNote } });
     } catch (err) {
       this.setState({ busy: '', prog: 0, result: null, gpsMsg: 'Échec de l\u2019export : ' + (err && err.message ? err.message : err) });
     }
@@ -427,7 +459,7 @@ class Component extends DCLogic {
       buildZip: this.buildZip,
 
       hasResult: !!s.result,
-      resultLine: s.result ? s.result.name + ' · ' + fmt(s.result.size) + ' prêt.' : '',
+      resultLine: s.result ? s.result.name + ' · ' + fmt(s.result.size) + ' prêt.' + (s.result.note ? ' ' + s.result.note : '') : '',
       download: () => {
         const r = s.result; if (!r) return;
         const a = document.createElement('a');
