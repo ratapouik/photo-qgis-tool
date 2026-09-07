@@ -18,6 +18,11 @@ Copier le contenu de ce dossier dans ton dépôt `photo-qgis-tool`, dans un sous
     terrain/icon-192.png
     terrain/icon-512.png
 
+Le compte-rendu PDF est mis en page par `compte-rendu.js`, à la racine du dépôt et
+partagé avec l'outil de bureau. Il doit donc être en ligne lui aussi, sans quoi
+l'export part sans compte-rendu (le reste du ZIP est complet, et l'écran d'export
+dit pourquoi).
+
 GitHub Pages est déjà décrit dans ton README : `Settings > Pages`, source `main`,
 dossier `/ (root)`. L'appli sera servie sur
 `https://ratapouik.github.io/photo-qgis-tool/terrain/`.
@@ -32,7 +37,8 @@ le mode hors-ligne fonctionnent, et pour que l'installation soit proposée.
 3. Lancer depuis l'icône : l'appli s'ouvre en plein écran, sans barre de navigateur.
 
 Au premier lancement, garder du réseau quelques secondes : les librairies d'export
-(JSZip, exifr, jsPDF) et les polices sont téléchargées puis mises en cache. Ensuite
+(JSZip, exifr, jsPDF), la mise en page du compte-rendu et les polices sont
+téléchargées puis mises en cache. Ensuite
 l'appli fonctionne hors-ligne. Faire un export test avec une photo avant de partir sur
 le terrain : c'est ce qui remplit le cache.
 
@@ -56,7 +62,10 @@ Un ZIP nommé « Client - Ville.zip » contenant :
 - `points.geojson` — un point par photo, en WGS 84 (EPSG:4326), champs `nom`,
   `photo`, `date`, `precision_m`, `source_position`, `poids_ko`,
 - `points.csv` — même contenu, séparateur point-virgule,
-- `Client - Ville.pdf` — le compte-rendu : une page par photo, coordonnées et date,
+- `Client - Ville.pdf` — le compte-rendu : un plan de localisation sur orthophoto
+  IGN avec repères numérotés, échelle et cartouche de situation, puis une fiche par
+  photo. Les prises sans position en sont absentes, comme du GeoJSON ; s'il n'y en a
+  aucune de localisée, le ZIP part sans compte-rendu,
 - `lisez-moi.txt` — le rappel de la manipulation QGIS.
 
 Le bouton Partager passe par le partage Android (mail, Drive, WhatsApp) ; Enregistrer
