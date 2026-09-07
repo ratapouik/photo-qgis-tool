@@ -156,6 +156,9 @@ input,textarea,select{font-family:inherit}
         </div>
       </sc-if>
 
+      <sc-if value="{{ hasExportMsg }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-bottom:12px;border:1px solid #d8a657;background:rgba(216,166,87,.14);padding:11px 13px;font-size:13px;line-height:1.55;color:#6b4d16">{{ exportMsg }}</div>
+      </sc-if>
       <button onClick="{{ buildZip }}" disabled="{{ exportDisabled }}" style="width:100%;min-height:56px;background:#5980a6;color:#f2f2f3;border:0;border-radius:2px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:17px;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;opacity:{{ exportOpacity }}" style-active="background:#416180">Générer le ZIP</button>
 
       <sc-if value="{{ hasResult }}" hint-placeholder-val="{{ false }}">
@@ -181,7 +184,20 @@ const MAXDIM = 2400;
 const fmt = b => b >= 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' Mo' : Math.round(b / 1024) + ' Ko';
 const pad = (n, l) => String(n).padStart(l, '0');
 const stamp = d => pad(d.getDate(), 2) + '/' + pad(d.getMonth() + 1, 2) + '/' + d.getFullYear() + ' ' + pad(d.getHours(), 2) + ':' + pad(d.getMinutes(), 2);
-const safe = s => (s || '').replace(/[^\w\-. ]+/g, '-').trim();
+const FS_FORBIDDEN = /[\\/:*?"<>|\u0000-\u001F]/g;   // interdits sous Windows comme ailleurs
+// Nom de fichier : on ne retire que ce qu'un système de fichiers refuse
+// réellement. La version précédente ne gardait que [A-Za-z0-9_-. ], ce qui
+// écrasait toutes les lettres accentuées : « Relevé » devenait « Relev- » et
+// « Saint-Étienne » « Saint--tienne ». Pour une appli de chantier française,
+// c'était la règle plutôt que l'exception, et cela touchait aussi bien le nom
+// de l'archive que celui de chaque photo, référencé depuis le GeoJSON.
+const safe = s => {
+  const out = (s || '').normalize('NFC')
+    .replace(FS_FORBIDDEN, '_')
+    .replace(/^\.+/, '').replace(/\.+$/, '')
+    .trim().slice(0, 120);
+  return out || 'photo';
+};
 
 // Le compte-rendu PDF n'est pas chargé au démarrage : sur le terrain on ouvre
 // l'appli pour photographier, pas pour éditer un livrable. jsPDF et la mise en
@@ -212,6 +228,7 @@ class Component extends DCLogic {
   state = {
     tab: 'prises', photos: [], quality: 'Moyenne',
     client: '', ville: '', optProjet: true, optPhotos: true, optPdf: true,
+    exportMsg: '',
     gps: null, gpsMsg: 'Position non relevée.',
     busy: '', prog: 0, result: null, seq: 1
   };
@@ -300,8 +317,15 @@ class Component extends DCLogic {
   buildZip = async () => {
     const s = this.state;
     if (!s.photos.length || s.busy) return;
+    // Les trois contenus décochés produisaient une archive de 22 octets annoncée
+    // « prête » : on s'en aperçoit une fois rentré du chantier. L'outil de bureau
+    // refuse déjà ce cas, le terrain le refuse aussi.
+    if (!s.optProjet && !s.optPhotos && !s.optPdf) {
+      this.setState({ exportMsg: 'Rien à exporter : cochez au moins un contenu du ZIP.' });
+      return;
+    }
     const title = [s.client, s.ville].filter(Boolean).join(' - ') || 'Relevé';
-    this.setState({ busy: 'Compression…', prog: 2, result: null });
+    this.setState({ busy: 'Compression…', prog: 2, result: null, exportMsg: '' });
     try {
       const JSZip = (await import('https://esm.sh/jszip@3.10.1')).default;
       const zip = new JSZip();
@@ -454,9 +478,9 @@ class Component extends DCLogic {
       fillProjet: s.optProjet ? ACC : 'transparent',
       fillPhotos: s.optPhotos ? ACC : 'transparent',
       fillPdf: s.optPdf ? ACC : 'transparent',
-      toggleProjet: () => this.setState({ optProjet: !s.optProjet }),
-      togglePhotos: () => this.setState({ optPhotos: !s.optPhotos }),
-      togglePdf: () => this.setState({ optPdf: !s.optPdf }),
+      toggleProjet: () => this.setState({ optProjet: !s.optProjet, exportMsg: '' }),
+      togglePhotos: () => this.setState({ optPhotos: !s.optPhotos, exportMsg: '' }),
+      togglePdf: () => this.setState({ optPdf: !s.optPdf, exportMsg: '' }),
 
       summary: s.photos.length
         ? s.photos.length + ' photo(s) · ' + fmt(total) + ' brut → environ ' + fmt(est) + ' après compression' + (missing ? ' · ' + missing + ' sans position, exclue(s) du GeoJSON' : ' · toutes géolocalisées')
@@ -467,6 +491,8 @@ class Component extends DCLogic {
       exportOpacity: (!s.photos.length || !!s.busy) ? '.45' : '1',
       buildZip: this.buildZip,
 
+      hasExportMsg: !!s.exportMsg,
+      exportMsg: s.exportMsg,
       hasResult: !!s.result,
       resultLine: s.result ? s.result.name + ' · ' + fmt(s.result.size) + ' prêt.' + (s.result.note ? ' ' + s.result.note : '') : '',
       download: () => {

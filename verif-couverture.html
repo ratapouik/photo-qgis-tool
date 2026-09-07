@@ -60,6 +60,7 @@
   .verdict{padding:14px 16px;border-radius:var(--r-sm);font-size:14px;line-height:1.6;margin-bottom:14px}
   .v-ok{background:var(--accent-bg);border:1px solid var(--accent-border);color:var(--accent)}
   .v-warn{background:rgba(255,176,32,.12);border:1px solid rgba(255,176,32,.28);color:var(--warn)}
+  .v-bad{background:rgba(255,96,88,.12);border:1px solid rgba(255,96,88,.30);color:var(--danger)}
   pre{
     background:var(--solid);border:1px solid var(--line);border-radius:var(--r-xs);padding:12px;
     font-size:11.5px;line-height:1.5;overflow-x:auto;white-space:pre;color:var(--text2);margin-top:10px
@@ -225,7 +226,17 @@ function afficher(nPts,nTerre,surTerre,trous){
   const couvertParPlan=trous.filter(t=>t.plan==='ok').length;
   const base=lignes.find(l=>l.z===19)||lignes[0];
   const v=$('#verdict');
-  if(!trous.length){
+  if(!nTerre){
+    // Aucun point n'a répondu au zoom de référence : soit le service est
+    // injoignable (réseau coupé, WMTS en panne, requête bloquée), soit la
+    // grille est tombée entièrement hors des terres. Dans les deux cas la
+    // sonde n'a rien mesuré et ne peut rien conclure.
+    v.className='verdict v-bad';
+    v.innerHTML='<b>Sondage non concluant.</b> Aucune des '+nPts+' positions n\'a re\u00e7u de r\u00e9ponse du '
+      +'service WMTS de l\'IGN au zoom '+ZOOMS[0]+'. La couverture n\'a donc pas pu \u00eatre mesur\u00e9e — '
+      +'v\u00e9rifiez la connexion, puis relancez. Les chiffres ci-dessous sont tous nuls pour la m\u00eame raison, '
+      +'ils ne disent rien de la donn\u00e9e IGN.';
+  }else if(!trous.length){
     v.className='verdict v-ok';
     v.textContent='Aucun trou sur les '+nTerre+' points terrestres sondés, à tous les niveaux testés.';
   }else{
@@ -245,7 +256,9 @@ function afficher(nPts,nTerre,surTerre,trous){
     '','zoom  résolution     donnée  vide  absente  couverture']
     .concat(lignes.map(l=>String(l.z).padEnd(6)+resM(l.z).padEnd(14)+String(l.ok).padEnd(8)
       +String(l.vide).padEnd(6)+String(l.abs).padEnd(9)+l.pct.toFixed(1)+' %'))
-    .concat(['','trous sur terre : '+trous.length+' — couverts par le Plan IGN : '+couvertParPlan])
+    .concat(nTerre
+      ? ['','trous sur terre : '+trous.length+' — couverts par le Plan IGN : '+couvertParPlan]
+      : ['','SONDAGE NON CONCLUANT : aucune réponse du service IGN, rien n\'a été mesuré.'])
     .concat(trous.slice(0,30).map(t=>'  '+t.nom+' '+t.lon+','+t.lat+' z'+t.z+' ortho='+t.etat+' plan='+(t.plan||'-')))
     .join('\n');
   $('#raw').textContent=txt;
